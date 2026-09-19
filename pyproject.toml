@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=77", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "scanclean"
+version = "0.1.0"
+description = "Conservative classical image processing for degraded scanned documents"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "AGPL-3.0-only"
+authors = [{ name = "Vimarsh" }]
+dependencies = [
+  "numpy>=2.0",
+  "opencv-python>=5.0.0.93,<6",
+  "Pillow>=10",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Multimedia :: Graphics :: Graphics Conversion",
+]
+
+[project.optional-dependencies]
+test = [
+  "build>=1.2",
+  "pypdf>=5",
+  "pytest>=8",
+]
+
+[project.scripts]
+scanclean = "scanclean.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+scanclean = ["models/*.onnx", "models/*.md"]
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+markers = [
+  "original: tests requiring the ignored local original/ sample PDFs",
+  "slow: representative full-resolution regression tests",
+]
+testpaths = ["tests"]

@@ -20,8 +20,14 @@ experiments/out/
 
 __pycache__/
 *.pyc
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+.coverage
 .DS_Store
 
 # large upstream weights (third_party/docdiff/fetch_weights.py) and local envs
 third_party/docdiff/checksave/
 .venv/
+venv/

@@ -4,15 +4,16 @@ Print-ready cleanup for scanned books, tuned for Indic scripts. White background
 noise and stamps gone, **every diacritic preserved**.
 
 ```bash
-python3 scanclean.py original/*.pdf -o cleaned                        # greyscale, safest
-python3 scanclean.py original/*.pdf -o out --upscale 2 --bilevel      # best for printing
-python3 scanclean.py original/*.pdf -o cleaned --audit                # + overlay of deletions
+scanclean original/*.pdf -o cleaned                        # greyscale, safest
+scanclean original/*.pdf -o out --upscale 2 --bilevel      # best for printing
+scanclean original/*.pdf -o cleaned --audit                # + overlay of deletions
 ```
 
-Requires `python3`, `opencv-python` (5.x: its DNN module must read the ONNX
-detector; 4.10 cannot), `pillow`, `numpy`, and poppler (`pdfimages`, `pdfinfo`,
-`pdftoppm`) on `PATH`. `models/ppocrv6_tiny_det.onnx` is optional - without it,
-or with `--no-detect`, the detector stages are skipped.
+Requires Python 3.10+, `opencv-python` 5.0.0.93 or newer (but below 6),
+`pillow`, `numpy`, and Poppler (`pdfimages`, `pdfinfo`, `pdftoppm`) on `PATH`.
+OpenCV 5 is required because its DNN importer loads the bundled
+`scanclean/models/ppocrv6_tiny_det.onnx` detector. The detector can still be
+disabled explicitly with `--no-detect`.
 
 Install the Python dependencies with `python -m pip install -r requirements.txt`.
 
@@ -69,7 +70,7 @@ Run BOTH audits after changing any threshold. Between them they have caught ever
 real defect found so far; neither catches all of them alone:
 
 ```bash
-python3 scanclean.py original/*.pdf -o cleaned --audit   # per-pixel overlay
+scanclean original/*.pdf -o cleaned --audit              # per-pixel overlay
 python3 audit_lines.py                                   # ink lost from lines of type
 ```
 

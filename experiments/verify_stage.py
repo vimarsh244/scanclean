@@ -9,7 +9,8 @@ import os, sys
 import cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
-import scanclean as sc
+import scanclean.core as sc
+from scanclean.cli import page_images
 from audit_lines import Opt
 
 
@@ -22,7 +23,7 @@ stage = sys.argv[1]
 prefix = sys.argv[2] if len(sys.argv) > 2 else f"{HERE}/out/_v_{stage}"
 tiles = []
 for s in (1, 2, 3, 4):
-    for i, bgr, dpi in sc.page_images(f"{os.path.dirname(HERE)}/original/Sample {s}.pdf"):
+    for i, bgr, dpi in page_images(f"{os.path.dirname(HERE)}/original/Sample {s}.pdf"):
         tag = f"s{s}p{i+1:02d}"
         a = sc.analyse(bgr, dpi, O)
         out = sc.clean_page(bgr, dpi, O)[0]

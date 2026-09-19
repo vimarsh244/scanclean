@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install Poppler
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+      - name: Install package and test tools
+        run: python -m pip install --upgrade pip && python -m pip install -e ".[test]"
+      - name: Run tests
+        run: python -m pytest -v
+      - name: Build wheel and source distribution
+        run: python -m build
+      - name: Install and smoke-test the wheel
+        shell: bash
+        run: |
+          python -m venv /tmp/scanclean-wheel-test
+          /tmp/scanclean-wheel-test/bin/python -m pip install dist/*.whl
+          cd /tmp
+          /tmp/scanclean-wheel-test/bin/python - <<'PY'
+          import numpy as np
+          import scanclean
+
+          page = np.full((32, 32, 3), 255, dtype=np.uint8)
+          cleaned, stats, audit, dpi = scanclean.clean_page(page, dpi=300)
+          assert cleaned.shape == (32, 32)
+          assert dpi == 300
+          print(scanclean.__version__)
+          PY

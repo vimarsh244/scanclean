@@ -3,7 +3,7 @@
 
     python3 audit_lines.py [n_worst]
 
-The `core_removed` counter in scanclean.py has a blind spot, and it is the one
+The `core_removed` counter in ScanClean has a blind spot, and it is the one
 that matters. It asks "did we delete anything glyph-shaped?" - but when a crease
 grazes a word, letter and crease become ONE component, and that merged blob is
 not glyph-shaped. Deleting it wholesale takes the word with it and the counter
@@ -25,7 +25,8 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import scanclean as sc
+import scanclean.core as sc
+from scanclean.cli import page_images
 
 
 class Opt:
@@ -68,7 +69,7 @@ def main():
     worst = int(sys.argv[1]) if len(sys.argv) > 1 else 24
     rows, tiles = [], []
     for pdf in sorted(f for f in os.listdir("original") if f.endswith(".pdf")):
-        for i, bgr, dpi in sc.page_images(f"original/{pdf}"):
+        for i, bgr, dpi in page_images(f"original/{pdf}"):
             norm, kill, runs, gh = kill_mask(bgr, dpi)
             for (x, y, w, h) in line_boxes(runs, gh):
                 pad = int(0.8 * gh)
@@ -91,7 +92,7 @@ def main():
         for lost, pdf, pg, (x0, y0, x1, y1) in rows[:worst]:
             key = (pdf, pg)
             if key not in cache:
-                for i, bgr, dpi in sc.page_images(f"original/{pdf}"):
+                for i, bgr, dpi in page_images(f"original/{pdf}"):
                     if i + 1 == pg:
                         cache[key] = kill_mask(bgr, dpi)[:2]
                         break
