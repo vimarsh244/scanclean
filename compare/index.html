@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scan Cleanup — Before / After</title>
+<style>
+  :root{
+    --bg:#f6f6f4; --panel:#fff; --ink:#16161a; --muted:#6b6b76;
+    --line:#e2e2dd; --accent:#b4562a; --shadow:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#141416; --panel:#1c1c20; --ink:#ececf0; --muted:#9a9aa4;
+      --line:#2c2c33; --accent:#e08a5c; --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.5 ui-sans-serif,-apple-system,"SF Pro Text",Inter,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  header{padding:28px 24px 18px;max-width:1200px;margin:0 auto}
+  h1{margin:0 0 6px;font-size:22px;letter-spacing:-.01em;font-weight:650}
+  .sub{color:var(--muted);font-size:13.5px;margin:0}
+  .bar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 86%,transparent);
+    backdrop-filter:saturate(1.6) blur(10px);border-bottom:1px solid var(--line)}
+  .bar-in{max-width:1200px;margin:0 auto;padding:10px 24px;display:flex;gap:18px;
+    align-items:center;flex-wrap:wrap}
+  .grp{display:flex;gap:6px;align-items:center}
+  .lbl{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;
+    margin-right:2px}
+  button{font:inherit;font-size:13px;padding:5px 11px;border-radius:7px;cursor:pointer;
+    border:1px solid var(--line);background:var(--panel);color:var(--ink);transition:.12s}
+  button:hover{border-color:var(--muted)}
+  button[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+  label.chk{display:flex;gap:7px;align-items:center;font-size:13px;color:var(--muted);
+    cursor:pointer;user-select:none}
+  main{max-width:1200px;margin:0 auto;padding:26px 24px 80px}
+  h2{font-size:14px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);margin:38px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h2:first-of-type{margin-top:6px}
+  .grid{display:flex;flex-wrap:wrap;gap:26px;max-width:100%}
+  figure{margin:0;max-width:100%}
+  figcaption{font-size:12px;color:var(--muted);margin-top:7px;display:flex;
+    justify-content:space-between;align-items:center}
+  .cmp{position:relative;overflow:hidden;border-radius:8px;background:#fff;
+    box-shadow:var(--shadow);cursor:ew-resize;touch-action:pan-y;outline:none;
+    --pos:50%}
+  .cmp:focus-visible{box-shadow:0 0 0 2px var(--accent),var(--shadow)}
+  .cmp img{position:absolute;inset:0;width:100%;height:100%;display:block;
+    user-select:none;-webkit-user-drag:none}
+  /* clip, rather than resize, so both layers stay pixel-aligned at any width */
+  .cmp img.before{clip-path:inset(0 calc(100% - var(--pos)) 0 0)}
+  .divider{position:absolute;top:0;bottom:0;left:var(--pos);width:2px;
+    background:var(--accent);transform:translateX(-1px);pointer-events:none;
+    box-shadow:0 0 0 1px rgba(255,255,255,.55)}
+  .knob{position:absolute;top:50%;left:var(--pos);width:30px;height:30px;margin:-15px 0 0 -15px;
+    border-radius:50%;background:var(--accent);pointer-events:none;
+    box-shadow:0 2px 6px rgba(0,0,0,.3);display:grid;place-items:center}
+  .knob::before{content:"◀ ▶";color:#fff;font-size:9px;letter-spacing:-1px}
+  .tag{position:absolute;top:8px;font-size:10px;font-weight:600;letter-spacing:.08em;
+    text-transform:uppercase;padding:3px 7px;border-radius:4px;pointer-events:none;
+    background:rgba(20,20,22,.72);color:#fff;transition:opacity .15s}
+  .tag.l{left:8px} .tag.r{right:8px}
+  .note{color:var(--muted);font-size:13px;margin:0 0 4px}
+  kbd{font:inherit;font-size:11.5px;background:var(--panel);border:1px solid var(--line);
+    border-bottom-width:2px;border-radius:4px;padding:1px 5px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Scan cleanup — before / after</h1>
+  <p class="sub">All 29 pages. Drag the divider, or focus a page and use <kbd>←</kbd> <kbd>→</kbd>.
+     At <strong>560 px</strong> each image lands 1:1 on a Retina display — no upscaling.</p>
+</header>
+
+<div class="bar">
+  <div class="bar-in">
+    <div class="grp"><span class="lbl">Book</span><span id="tabs"></span></div>
+    <div class="grp"><span class="lbl">Width</span><span id="sizes"></span></div>
+    <label class="chk"><input type="checkbox" id="sync" checked> Move all together</label>
+    <label class="chk"><input type="checkbox" id="labels" checked> Labels</label>
+  </div>
+</div>
+
+<main id="main"><p class="note">Loading…</p></main>
+
+<script>
+const SIZES = [
+  {w:440, name:"440"},
+  {w:560, name:"560 · 1:1", hint:"one image pixel per Retina device pixel"},
+  {w:760, name:"760"},
+  {w:1040, name:"1040"},
+];
+let pages = [], sample = 0, width = 560;
+
+const el = (t, props={}, kids=[]) => {
+  const n = Object.assign(document.createElement(t), props);
+  for (const k of kids) n.append(k);
+  return n;
+};
+
+function setPos(node, pct){
+  pct = Math.max(0, Math.min(100, pct));
+  node.style.setProperty("--pos", pct + "%");
+  node.dataset.pos = pct;
+}
+
+function build(){
+  const main = document.getElementById("main");
+  main.textContent = "";
+  const shown = pages.filter(p => !sample || p.s === sample);
+  let cur = null, grid = null;
+
+  for (const p of shown){
+    if (p.s !== cur){
+      cur = p.s;
+      main.append(el("h2", {textContent: `Sample ${p.s}`}));
+      grid = el("div", {className:"grid"});
+      main.append(grid);
+    }
+    // Aspect-ratio rather than a computed pixel height, and capped at the
+    // available width: the chosen width is an upper bound, so a narrow window
+    // shrinks the page instead of scrolling the body sideways.
+    const box = el("div", {className:"cmp", tabIndex:0});
+    box.style.width = width + "px";
+    box.style.maxWidth = "100%";
+    box.style.aspectRatio = `${p.w} / ${p.h}`;
+    box.setAttribute("role","slider");
+    box.setAttribute("aria-label", `Sample ${p.s} page ${p.p}: before / after`);
+    box.setAttribute("aria-valuemin","0");
+    box.setAttribute("aria-valuemax","100");
+
+    const after  = el("img", {src:"img/"+p.a, loading:"lazy", alt:`Sample ${p.s} page ${p.p}, cleaned`});
+    const before = el("img", {src:"img/"+p.b, loading:"lazy", alt:`Sample ${p.s} page ${p.p}, original`});
+    before.className = "before";
+    box.append(after, before,
+               el("div",{className:"tag l",textContent:"Original"}),
+               el("div",{className:"tag r",textContent:"Cleaned"}),
+               el("div",{className:"divider"}), el("div",{className:"knob"}));
+    setPos(box, 50);
+
+    grid.append(el("figure", {}, [
+      box,
+      el("figcaption", {}, [
+        el("span",{textContent:`Page ${p.p}`}),
+        el("span",{textContent:`${p.w}×${p.h}`})
+      ])
+    ]));
+  }
+  applyLabels();
+}
+
+function move(box, clientX){
+  const r = box.getBoundingClientRect();
+  const pct = (clientX - r.left) / r.width * 100;
+  if (document.getElementById("sync").checked){
+    document.querySelectorAll(".cmp").forEach(n => setPos(n, pct));
+  } else {
+    setPos(box, pct);
+  }
+}
+
+// One delegated pointer handler for every slider on the page, so adding 29 of
+// them costs nothing and drags keep working outside the element they started in.
+let dragging = null;
+addEventListener("pointerdown", e => {
+  const box = e.target.closest(".cmp");
+  if (!box) return;
+  dragging = box; box.setPointerCapture?.(e.pointerId);
+  move(box, e.clientX); e.preventDefault();
+});
+addEventListener("pointermove", e => { if (dragging) move(dragging, e.clientX); });
+addEventListener("pointerup",   () => { dragging = null; });
+addEventListener("keydown", e => {
+  const box = document.activeElement?.closest?.(".cmp");
+  if (!box) return;
+  const step = e.shiftKey ? 10 : 2;
+  if (e.key === "ArrowLeft")  { setPos(box, +box.dataset.pos - step); e.preventDefault(); }
+  if (e.key === "ArrowRight") { setPos(box, +box.dataset.pos + step); e.preventDefault(); }
+});
+
+function applyLabels(){
+  const on = document.getElementById("labels").checked;
+  document.querySelectorAll(".tag").forEach(t => t.style.opacity = on ? "1" : "0");
+}
+document.getElementById("labels").addEventListener("change", applyLabels);
+
+function chips(host, items, isOn, onPick){
+  host.textContent = "";
+  items.forEach(it => {
+    const b = el("button", {textContent: it.name, title: it.hint || ""});
+    b.setAttribute("aria-pressed", String(isOn(it)));
+    b.onclick = () => { onPick(it); };
+    host.append(b);
+  });
+}
+
+function renderChips(){
+  chips(document.getElementById("tabs"),
+    [{v:0,name:"All"}, ...[1,2,3,4].map(v => ({v, name:"Sample "+v}))],
+    it => it.v === sample,
+    it => { sample = it.v; renderChips(); build(); scrollTo({top:0}); });
+  chips(document.getElementById("sizes"), SIZES,
+    it => it.w === width,
+    it => { width = it.w; renderChips(); build(); });
+}
+
+// Data is inlined rather than fetched so the page works straight from a
+// file:// path - double-click it, no local server needed.
+pages = /*DATA*/[{"s":1,"p":1,"w":1117,"h":2019,"b":"s1p01b.jpg","a":"s1p01a.png"},{"s":1,"p":2,"w":1083,"h":2014,"b":"s1p02b.jpg","a":"s1p02a.png"},{"s":1,"p":3,"w":1117,"h":2019,"b":"s1p03b.jpg","a":"s1p03a.png"},{"s":1,"p":4,"w":1083,"h":2014,"b":"s1p04b.jpg","a":"s1p04a.png"},{"s":1,"p":5,"w":1117,"h":2019,"b":"s1p05b.jpg","a":"s1p05a.png"},{"s":1,"p":6,"w":1184,"h":2014,"b":"s1p06b.jpg","a":"s1p06a.png"},{"s":1,"p":7,"w":1196,"h":2019,"b":"s1p07b.jpg","a":"s1p07a.png"},{"s":2,"p":1,"w":1184,"h":2014,"b":"s2p01b.jpg","a":"s2p01a.png"},{"s":2,"p":2,"w":1196,"h":2019,"b":"s2p02b.jpg","a":"s2p02a.png"},{"s":2,"p":3,"w":1184,"h":2014,"b":"s2p03b.jpg","a":"s2p03a.png"},{"s":2,"p":4,"w":1196,"h":2019,"b":"s2p04b.jpg","a":"s2p04a.png"},{"s":2,"p":5,"w":1184,"h":2014,"b":"s2p05b.jpg","a":"s2p05a.png"},{"s":2,"p":6,"w":1196,"h":2019,"b":"s2p06b.jpg","a":"s2p06a.png"},{"s":2,"p":7,"w":1100,"h":2014,"b":"s2p07b.jpg","a":"s2p07a.png"},{"s":3,"p":1,"w":1136,"h":1684,"b":"s3p01b.jpg","a":"s3p01a.png"},{"s":3,"p":2,"w":1251,"h":1698,"b":"s3p02b.jpg","a":"s3p02a.png"},{"s":3,"p":3,"w":1136,"h":1684,"b":"s3p03b.jpg","a":"s3p03a.png"},{"s":3,"p":4,"w":1251,"h":1698,"b":"s3p04b.jpg","a":"s3p04a.png"},{"s":3,"p":5,"w":1136,"h":1684,"b":"s3p05b.jpg","a":"s3p05a.png"},{"s":3,"p":6,"w":1251,"h":1698,"b":"s3p06b.jpg","a":"s3p06a.png"},{"s":3,"p":7,"w":1136,"h":1684,"b":"s3p07b.jpg","a":"s3p07a.png"},{"s":3,"p":8,"w":1251,"h":1698,"b":"s3p08b.jpg","a":"s3p08a.png"},{"s":4,"p":1,"w":1220,"h":2060,"b":"s4p01b.jpg","a":"s4p01a.png"},{"s":4,"p":2,"w":1123,"h":2060,"b":"s4p02b.jpg","a":"s4p02a.png"},{"s":4,"p":3,"w":1192,"h":2077,"b":"s4p03b.jpg","a":"s4p03a.png"},{"s":4,"p":4,"w":1116,"h":2077,"b":"s4p04b.jpg","a":"s4p04a.png"},{"s":4,"p":5,"w":1209,"h":2087,"b":"s4p05b.jpg","a":"s4p05a.png"},{"s":4,"p":6,"w":1109,"h":2087,"b":"s4p06b.jpg","a":"s4p06a.png"},{"s":4,"p":7,"w":1228,"h":2090,"b":"s4p07b.jpg","a":"s4p07a.png"}];
+renderChips(); build();
+</script>
+</body>
+</html>

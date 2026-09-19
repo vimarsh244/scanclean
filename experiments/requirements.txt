@@ -1,0 +1,11 @@
+# experiments only - scanclean.py itself needs just opencv, numpy, pillow
+torch
+torchvision
+numpy
+opencv-python-headless
+pillow
+h5py
+paddlepaddle
+paddleocr
+paddle2onnx
+onnx

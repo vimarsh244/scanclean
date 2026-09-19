@@ -1,0 +1,27 @@
+# source scans and every processed output - never committed
+original/
+cleaned/
+cleaned-print/
+*.pdf
+
+# renders of the pages (comparison images, audits, experiment inputs/outputs)
+*.png
+*.jpg
+*.jpeg
+compare/img/
+compare/pages.json
+experiments/in/
+experiments/norm/
+experiments/sc/
+experiments/kill/
+experiments/runs/
+experiments/wb/
+experiments/out/
+
+__pycache__/
+*.pyc
+.DS_Store
+
+# large upstream weights (third_party/docdiff/fetch_weights.py) and local envs
+third_party/docdiff/checksave/
+.venv/
