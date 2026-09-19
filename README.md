@@ -14,6 +14,10 @@ Install the package and its Python dependencies from this repository:
 python -m pip install .
 ```
 
+ScanClean requires OpenCV 5 so the bundled ONNX text detector is always
+available. Install only one OpenCV wheel variant in an environment; the package
+uses `opencv-python` by default.
+
 For development and tests:
 
 ```bash

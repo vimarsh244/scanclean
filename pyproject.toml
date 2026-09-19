@@ -12,7 +12,7 @@ license = "AGPL-3.0-only"
 authors = [{ name = "Vimarsh" }]
 dependencies = [
   "numpy>=2.0",
-  "opencv-python>=4.8,<6",
+  "opencv-python>=5.0.0.93,<6",
   "Pillow>=10",
 ]
 classifiers = [

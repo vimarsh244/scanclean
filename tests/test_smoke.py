@@ -53,3 +53,12 @@ def test_all_used_opencv_apis_exist():
         except AttributeError:
             missing.append("cv2." + ".".join(path))
     assert not missing, f"OpenCV is missing APIs used by ScanClean: {missing}"
+
+
+def test_opencv_5_loads_bundled_detector():
+    import scanclean.core as core
+
+    major = int(cv2.__version__.split(".", 1)[0])
+    assert major == 5, f"ScanClean requires OpenCV 5, found {cv2.__version__}"
+    detector = cv2.dnn.readNetFromONNX(str(core.MODEL))
+    assert not detector.empty()

@@ -9,10 +9,11 @@ scanclean original/*.pdf -o out --upscale 2 --bilevel      # best for printing
 scanclean original/*.pdf -o cleaned --audit                # + overlay of deletions
 ```
 
-Requires Python 3.10+, `opencv-python` 4.8 or newer, `pillow`, `numpy`, and
-Poppler (`pdfimages`, `pdfinfo`, `pdftoppm`) on `PATH`. The bundled
-`scanclean/models/ppocrv6_tiny_det.onnx` detector is optional at runtime;
-with `--no-detect`, the detector stages are skipped.
+Requires Python 3.10+, `opencv-python` 5.0.0.93 or newer (but below 6),
+`pillow`, `numpy`, and Poppler (`pdfimages`, `pdfinfo`, `pdftoppm`) on `PATH`.
+OpenCV 5 is required because its DNN importer loads the bundled
+`scanclean/models/ppocrv6_tiny_det.onnx` detector. The detector can still be
+disabled explicitly with `--no-detect`.
 
 Install the Python dependencies with `python -m pip install -r requirements.txt`.
 
