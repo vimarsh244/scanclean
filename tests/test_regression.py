@@ -97,6 +97,31 @@ def test_baselines_cover_every_local_sample_document():
     assert {case["file"] for case in BASELINE["cases"]} == expected
 
 
+def test_original_pdf_end_to_end(tmp_path):
+    source = ORIGINAL / "Sample 1.pdf"
+    if not source.exists():
+        pytest.skip(f"local regression fixture is absent: {source}")
+
+    reader = PdfReader(source)
+    cleaned_pages, dpis = [], []
+    for page in reader.pages:
+        bgr = cv2.imdecode(
+            np.frombuffer(page.images[0].data, np.uint8), cv2.IMREAD_COLOR
+        )
+        dpi = round(bgr.shape[1] * 72 / float(page.mediabox.width), 3)
+        output, _, _, out_dpi = clean_page(bgr, dpi, Options())
+        cleaned_pages.append(output)
+        dpis.append(out_dpi)
+
+    destination = tmp_path / "sample-1.cleaned.pdf"
+    destination.write_bytes(make_pdf(cleaned_pages, dpis))
+
+    assert len(cleaned_pages) == len(reader.pages) == 7
+    assert destination.read_bytes().startswith(b"%PDF-")
+    assert destination.stat().st_size > 1000
+    assert len(PdfReader(destination).pages) == 7
+
+
 @pytest.mark.skipif(
     not all(shutil.which(command) for command in ("pdfimages", "pdfinfo", "pdftoppm")),
     reason="Poppler command-line tools are not installed",
