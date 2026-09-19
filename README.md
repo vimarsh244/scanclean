@@ -78,3 +78,7 @@ such as Pyodide. Browser integration is not part of this repository yet.
 
 See [experiments tried and implementation details](docs/experiments_tried.md)
 for the reasoning behind the conservative cleaning stages.
+
+## License
+
+ScanClean is licensed under the GNU Affero General Public License v3.0.

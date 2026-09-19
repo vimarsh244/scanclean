@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Conservative classical image processing for degraded scanned documents"
 readme = "README.md"
 requires-python = ">=3.10"
-license = "MIT"
+license = "AGPL-3.0-only"
 authors = [{ name = "Vimarsh" }]
 dependencies = [
   "numpy>=2.0",
