@@ -24,57 +24,40 @@ Pipeline per page (see README.md for the reasoning behind each):
   9. PDF assembly               -> lossless FlateDecode, own writer
 """
 
-import argparse
-import io
-import os
-import subprocess
-import sys
 import zlib
-import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
 
 
-# ---------------------------------------------------------------- input
+@dataclass
+class Options:
+    """Options for :func:`clean_page`, matching the command-line defaults."""
 
-def page_images(pdf_path, dpi=None):
-    """Yield (index, BGR array, dpi) per page.
-
-    Embedded images are extracted verbatim when each page holds exactly one,
-    which avoids a needless resample. Otherwise we rasterise.
-    """
-    tmp = tempfile.mkdtemp(prefix="scanclean_")
-    listing = subprocess.run(["pdfimages", "-list", pdf_path],
-                             capture_output=True, text=True).stdout.splitlines()
-    rows = [l.split() for l in listing[2:] if l.strip()]
-    npages = int(subprocess.run(["pdfinfo", pdf_path], capture_output=True, text=True)
-                 .stdout.split("Pages:")[1].split()[0])
-    one_per_page = len(rows) == npages and len({r[0] for r in rows}) == npages
-
-    if one_per_page and dpi is None:
-        # -all writes each image in its native encoding: the embedded JPEG
-        # bytes verbatim, so this is exact - and ~10x faster than -png, which
-        # decodes and re-encodes every page.
-        subprocess.run(["pdfimages", "-all", pdf_path, f"{tmp}/p"], check=True)
-        files = sorted(f for f in os.listdir(tmp) if f.startswith("p-"))
-        imgs = [cv2.imread(os.path.join(tmp, f), cv2.IMREAD_COLOR) for f in files]
-        if all(im is not None for im in imgs):
-            for i, img in enumerate(imgs):
-                yield i, img, float(rows[i][12])
-            return
-        # a format OpenCV cannot read (JBIG2, CCITT): let poppler decode it
-        for f in files:
-            os.remove(os.path.join(tmp, f))
-        subprocess.run(["pdfimages", "-png", pdf_path, f"{tmp}/p"], check=True)
-        for i, f in enumerate(sorted(x for x in os.listdir(tmp) if x.endswith(".png"))):
-            yield i, cv2.imread(os.path.join(tmp, f), cv2.IMREAD_COLOR), float(rows[i][12])
-    else:
-        r = dpi or 400
-        subprocess.run(["pdftoppm", "-r", str(r), "-png", pdf_path, f"{tmp}/p"], check=True)
-        for i, f in enumerate(sorted(x for x in os.listdir(tmp) if x.endswith(".png"))):
-            yield i, cv2.imread(os.path.join(tmp, f), cv2.IMREAD_COLOR), float(r)
+    deskew: bool = True
+    detect: bool = True
+    paper_floor: bool = True
+    no_crop: bool = False
+    keep_colour: bool = False
+    band: float = 0.09
+    ink_floor: float = 130
+    max_stamp: float = 0.04
+    chroma: float = 42
+    colour_kill: float = 1.4
+    black: float = 40
+    white: float = 224
+    speck: float = 0.55
+    up: float = 0.85
+    down: float = 0.65
+    side: float = 0.55
+    soften: float = 1.0
+    sharpen: float = 0.8
+    upscale: int = 1
+    faint: float = 150
+    bilevel: bool = False
+    audit: bool = False
 
 
 # ---------------------------------------------------------------- stages
@@ -901,8 +884,7 @@ def protection_zone(mask, gh, up=0.85, down=0.65, side=0.55):
 
 # ---------------------------------------------------------------- text detector
 
-MODEL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models",
-                     "ppocrv6_tiny_det.onnx")
+MODEL = Path(__file__).with_name("models") / "ppocrv6_tiny_det.onnx"
 _detector = None
 
 
@@ -1303,7 +1285,9 @@ def analyse(bgr, dpi, opt):
                 box=box, gh=gh, ga=ga, stats=stats, stages=stages)
 
 
-def clean_page(bgr, dpi, opt):
+def clean_page(bgr, dpi=300, opts=None):
+    """Clean one BGR image and return ``(image, stats, audit, output_dpi)``."""
+    opt = opts if opts is not None else Options()
     a = analyse(bgr, dpi, opt)
     if a["gh"] is None:
         return a["norm"], a["stats"], None, dpi
@@ -1342,8 +1326,8 @@ def _flate_stream(arr, bilevel):
     return zlib.compress(arr.tobytes(), 9), 8
 
 
-def write_pdf(pages, dpi_list, path, bilevel, transparent=False, matte=False):
-    """Write the PDF directly, with lossless FlateDecode images.
+def make_pdf(pages, dpi_list, bilevel=False, transparent=False, matte=False):
+    """Return PDF bytes containing losslessly compressed page images.
 
     Not via Pillow: its PDF plugin hard-codes DCTDecode for greyscale, and JPEG
     rings around exactly the high-contrast edges this whole tool exists to keep
@@ -1426,86 +1410,10 @@ def write_pdf(pages, dpi_list, path, bilevel, transparent=False, matte=False):
         out += f"{off:010d} 00000 n \n".encode()
     out += (f"trailer\n<</Size {len(objs)}/Root {catalog} 0 R>>\n"
             f"startxref\n{xref}\n%%EOF\n").encode()
+    return bytes(out)
+
+
+def write_pdf(pages, dpi_list, path, bilevel=False, transparent=False, matte=False):
+    """Write :func:`make_pdf` output to *path*."""
     with open(path, "wb") as f:
-        f.write(bytes(out))
-
-
-def main():
-    p = argparse.ArgumentParser(description="Clean scanned book PDFs for printing.")
-    p.add_argument("inputs", nargs="+")
-    p.add_argument("-o", "--outdir", default="cleaned")
-    p.add_argument("--dpi", type=float, default=None, help="force rasterise at this dpi")
-    p.add_argument("--bilevel", action="store_true", help="1-bit output (much smaller)")
-    p.add_argument("--no-deskew", dest="deskew", action="store_false",
-                   help="do not level a tilted scan (on by default, up to 3 degrees)")
-    p.add_argument("--no-detect", dest="detect", action="store_false",
-                   help="do not consult the text detector (models/ppocrv6_tiny_det.onnx)")
-    p.add_argument("--no-paper-floor", dest="paper_floor", action="store_false",
-                   help="keep sub-ink grey (mottle, edge wear) instead of whitening it")
-    p.add_argument("--no-crop", action="store_true", help="keep full page, do not clip margins")
-    p.add_argument("--keep-colour", action="store_true", help="do not suppress coloured ink/stamps")
-    p.add_argument("--band", type=float, default=0.09,
-                   help="edge band width (fraction of page) cleared of non-text ink")
-    p.add_argument("--ink-floor", type=float, default=130,
-                   help="stamp removal never clears pixels darker than this")
-    p.add_argument("--max-stamp", type=float, default=0.04,
-                   help="if coloured ink exceeds this fraction of the page it is "
-                        "a colour cast, not a stamp; removal stands down")
-    p.add_argument("--chroma", type=float, default=42,
-                   help="chroma above which ink counts as coloured (stamp removal)")
-    p.add_argument("--colour-kill", type=float, default=1.4,
-                   help="strength of chroma suppression (violet/red stamps, blue pen)")
-    p.add_argument("--black", type=float, default=40, help="tone: full-black point")
-    p.add_argument("--white", type=float, default=224, help="tone: paper-white point")
-    p.add_argument("--speck", type=float, default=0.55,
-                   help="max speck area as fraction of median glyph area")
-    p.add_argument("--up", type=float, default=0.85, help="protection above glyphs (x glyph height)")
-    p.add_argument("--down", type=float, default=0.65)
-    p.add_argument("--side", type=float, default=0.55)
-    p.add_argument("--soften", type=float, default=1.0)
-    p.add_argument("--sharpen", type=float, default=0.8,
-                   help="unsharp amount for stroke edges (0 disables)")
-    p.add_argument("--upscale", type=int, default=1,
-                   help="resample output by this integer factor (2 = 2x pixels, "
-                        "same physical page size)")
-    p.add_argument("--faint", type=float, default=150,
-                   help="in-zone blobs never darker than this are dirt (0 disables)")
-    p.add_argument("--transparent", action="store_true",
-                   help="emit ink only, paper transparent (stencil or alpha)")
-    p.add_argument("--matte", action="store_true",
-                   help="with --transparent, paint white behind the ink layer")
-    p.add_argument("--audit", action="store_true",
-                   help="also write an overlay PDF marking every removed pixel in red")
-    opt = p.parse_args()
-
-    os.makedirs(opt.outdir, exist_ok=True)
-    for path in opt.inputs:
-        name = os.path.splitext(os.path.basename(path))[0]
-        pages, dpis, audits, audit_dpis = [], [], [], []
-        for i, bgr, dpi in page_images(path, opt.dpi):
-            out, st, aud, out_dpi = clean_page(bgr, dpi, opt)
-            pages.append(out)
-            dpis.append(out_dpi)
-            if aud is not None:
-                audits.append(cv2.cvtColor(aud, cv2.COLOR_BGR2RGB))
-                audit_dpis.append(dpi)      # native: the audit is not upscaled
-            print(f"  {name} p{i+1}: {st}", flush=True)
-        dst = os.path.join(opt.outdir, f"{name}.cleaned.pdf")
-        write_pdf(pages, dpis, dst, opt.bilevel,
-                  transparent=opt.transparent, matte=opt.matte)
-        print(f"-> {dst}  ({os.path.getsize(dst)/1e6:.2f} MB)")
-        if audits:
-            # Pillow loads most codecs lazily.  Explicitly initialise its
-            # plugins because the PDF writer delegates RGB pages to the JPEG
-            # encoder, which otherwise may not be registered in a fresh
-            # process (notably with Pillow 12 on Python 3.14).
-            Image.init()
-            ad = os.path.join(opt.outdir, f"{name}.audit.pdf")
-            ims = [Image.fromarray(a) for a in audits]
-            ims[0].save(ad, save_all=True, append_images=ims[1:],
-                        resolution=float(audit_dpis[0]))
-            print(f"-> {ad}  (red = deleted pixels)")
-
-
-if __name__ == "__main__":
-    main()
+        f.write(make_pdf(pages, dpi_list, bilevel, transparent, matte))
