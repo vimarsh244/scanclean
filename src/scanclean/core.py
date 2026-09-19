@@ -1287,6 +1287,8 @@ def analyse(bgr, dpi, opt):
 
 def clean_page(bgr, dpi=300, opts=None):
     """Clean one BGR image and return ``(image, stats, audit, output_dpi)``."""
+    if bgr.ndim == 2:
+        bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
     opt = opts if opts is not None else Options()
     a = analyse(bgr, dpi, opt)
     if a["gh"] is None:
