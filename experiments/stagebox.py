@@ -4,12 +4,13 @@ import os, sys
 import cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
-import scanclean as sc
+import scanclean.core as sc
+from scanclean.cli import page_images
 from audit_lines import Opt
 det = sys.argv[1] if len(sys.argv) > 1 else "ppocr_tiny"
 tot, tiles = {}, []
 for s in (1, 2, 3, 4):
-    for i, bgr, dpi in sc.page_images(f"{os.path.dirname(HERE)}/original/Sample {s}.pdf"):
+    for i, bgr, dpi in page_images(f"{os.path.dirname(HERE)}/original/Sample {s}.pdf"):
         tag = f"s{s}p{i+1:02d}"
         a = sc.analyse(bgr, dpi, Opt)
         raw = np.load(f"{HERE}/out/{det}/{tag}.npy")

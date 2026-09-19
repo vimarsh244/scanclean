@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scanclean.py - print-ready cleanup for scanned books, tuned for Indic scripts.
+ScanClean core - print-ready cleanup for scanned books, tuned for Indic scripts.
 
 Design rule: text is sacred. Diacritics (anusvara, nukta, matra dots) in these
 scans are 3-6 px wide, i.e. exactly the size of the dust speckles we want gone.

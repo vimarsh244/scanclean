@@ -1,7 +1,8 @@
 # third_party
 
-Upstream code and weights used only by `experiments/` (never by `scanclean.py`,
-whose one learned component is `models/ppocrv6_tiny_det.onnx`).
+Upstream code and weights used only by `experiments/` (never by the packaged
+ScanClean pipeline, whose one learned component is the bundled
+`models/ppocrv6_tiny_det.onnx`).
 
 | Dir | Upstream | License | What is here |
 | --- | --- | --- | --- |

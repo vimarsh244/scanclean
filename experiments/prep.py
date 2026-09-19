@@ -11,7 +11,8 @@ import os, sys
 import cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
-import scanclean as sc
+import scanclean.core as sc
+from scanclean.cli import page_images
 from audit_lines import Opt
 
 class O(Opt):
@@ -21,7 +22,7 @@ class O(Opt):
 for d in ("in", "norm", "sc", "kill", "runs"):
     os.makedirs(f"{HERE}/{d}", exist_ok=True)
 for s in (1, 2, 3, 4):
-    for i, bgr, dpi in sc.page_images(f"{os.path.dirname(HERE)}/original/Sample {s}.pdf"):
+    for i, bgr, dpi in page_images(f"{os.path.dirname(HERE)}/original/Sample {s}.pdf"):
         tag = f"s{s}p{i+1:02d}"
         straight, _ = sc.straighten(bgr, dpi / 300.0)
         a = sc.analyse(bgr, dpi, O)

@@ -15,7 +15,7 @@ import os, sys
 import cv2, numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
-import scanclean as sc
+import scanclean.core as sc
 
 out, tags = sys.argv[1], sys.argv[2:]
 
