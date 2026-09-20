@@ -64,8 +64,10 @@ def main() -> None:
             line = f"{indent}-sUSE_ZLIB=1"
             found_zlib_link = True
         elif line.strip() == "-lpng-legacysjlj":
-            # This is the port variant compatible with Pyodide's WASM longjmp
-            # ABI. Emscripten does not build its PIC archive automatically.
+            # Select the matching PIC port archive instead of allowing a
+            # direct lookup to choose the non-PIC sysroot archive.
+            indent = line[: len(line) - len(line.lstrip())]
+            line = f"{indent}-sUSE_LIBPNG=1"
             found_png_link = True
         elif line.strip() == "source $PKGDIR/extras/build_args.sh":
             output.append("    embuilder build libjpeg --pic")

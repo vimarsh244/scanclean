@@ -55,7 +55,7 @@ def test_prepare_pyodide_recipe_updates_only_pinned_source(tmp_path):
     assert "    -ljpeg\n" not in result
     assert "    -sUSE_ZLIB=1\n" in result
     assert "    -lz\n" not in result
-    assert "    -lpng-legacysjlj\n" in result
+    assert "    -sUSE_LIBPNG=1\n" in result
     assert "    embuilder build libjpeg --pic\n" in result
     assert "    embuilder build zlib --pic\n" in result
     assert "    embuilder build libpng-legacysjlj --pic\n" in result
