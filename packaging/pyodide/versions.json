@@ -1,0 +1,21 @@
+{
+  "format": 1,
+  "pyodide": {
+    "version": "314.0.7",
+    "build_version": "0.39.0",
+    "python": "3.14.2",
+    "emscripten": "5.0.3",
+    "abi": "2026_0",
+    "recipes_commit": "fc8587207ecbf0fb54305d5da25ab7ed70f126d3"
+  },
+  "opencv": {
+    "base_recipe_version": "4.11.0.86",
+    "version": "5.0.0.93",
+    "source_url": "https://files.pythonhosted.org/packages/79/4c/a438d23e09ce2033c09f7b784ad2fbdb0adf529e434101ed28f142226f98/opencv_python-5.0.0.93.tar.gz",
+    "source_sha256": "66aac3e5b5faa48d4025816592f3af19e4bfc2c68dec067bae2dbb4ca10aa9e2"
+  },
+  "packages": {
+    "numpy": "2.4.6",
+    "pillow": "12.2.0"
+  }
+}

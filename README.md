@@ -74,11 +74,18 @@ tests for all four development sample documents. When those PDFs are absent,
 pytest skips only the tests that need them; no source PDF or processed version
 is committed. Small numerical baseline records remain in the repository.
 
-## Browser note
+## Browser / Pyodide
 
-The core package is pure Python and keeps desktop PDF extraction outside the
-image-processing module, so it can later be loaded into browser Python runtimes
-such as Pyodide. Browser integration is not part of this repository yet.
+Tagged releases include `scanclean-pyodide-vX.Y.Z.zip`, an ABI-locked browser
+distribution containing ScanClean, NumPy, Pillow, and a custom OpenCV 5 wheel.
+Use the included `pyodide-lock.json` with the Pyodide version recorded in its
+manifest. OpenCV 5 is built because the upstream OpenCV 4 Pyodide package cannot
+execute ScanClean's bundled PP-OCRv6 ONNX detector.
+
+The browser distribution still accepts decoded pixel arrays: PDF decoding,
+encoding, previews, ZIP creation, and downloads remain responsibilities of the
+calling application. Run ScanClean in a Web Worker because image cleanup is
+CPU-intensive and Pyodide otherwise executes on the UI thread.
 
 See [experiments tried and implementation details](docs/experiments_tried.md)
 for the reasoning behind the conservative cleaning stages.
