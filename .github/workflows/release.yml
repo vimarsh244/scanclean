@@ -56,13 +56,8 @@ jobs:
           node-version: "22"
       - name: Install Pyodide build tools
         run: python -m pip install --upgrade pip && python -m pip install "pyodide-build==$PYODIDE_BUILD_VERSION" build
-      - name: Select matching Emscripten
-        shell: bash
-        run: echo "EMSCRIPTEN_VERSION=$(pyodide config get emscripten_version)" >> "$GITHUB_ENV"
-      - uses: mymindstorm/setup-emsdk@v14
-        with:
-          version: ${{ env.EMSCRIPTEN_VERSION }}
-          actions-cache-folder: emsdk-cache
+      - name: Install matching Pyodide cross-build environment
+        run: pyodide xbuildenv install "$PYODIDE_VERSION"
       - name: Fetch pinned official package recipes
         shell: bash
         run: |
@@ -72,6 +67,8 @@ jobs:
       - name: Build ABI-matched OpenCV, NumPy, and Pillow wheels
         shell: bash
         run: |
+          EMSDK_DIR="$(pyodide config get emsdk_dir)"
+          source "$EMSDK_DIR/emsdk_env.sh" >/dev/null
           pyodide build-recipes opencv-python Pillow \
             --recipe-dir "$RUNNER_TEMP/pyodide-recipes/packages" \
             --build-dir "$RUNNER_TEMP/pyodide-build" \
