@@ -32,7 +32,8 @@ def main() -> None:
 
     source_lines = text.splitlines()
     in_source = False
-    found_url = found_hash = found_jpeg_link = found_png_link = False
+    found_url = found_hash = found_jpeg_link = found_zlib_link = False
+    found_png_link = False
     found_build_args = False
     output = []
     for line in source_lines:
@@ -56,12 +57,19 @@ def main() -> None:
             indent = line[: len(line) - len(line.lstrip())]
             line = f"{indent}-sUSE_LIBJPEG=1"
             found_jpeg_link = True
+        elif line.strip() == "-lz":
+            # As with JPEG, a direct library lookup can select the non-PIC
+            # archive on a clean runner instead of Emscripten's port variant.
+            indent = line[: len(line) - len(line.lstrip())]
+            line = f"{indent}-sUSE_ZLIB=1"
+            found_zlib_link = True
         elif line.strip() == "-lpng-legacysjlj":
             # This is the port variant compatible with Pyodide's WASM longjmp
             # ABI. Emscripten does not build its PIC archive automatically.
             found_png_link = True
         elif line.strip() == "source $PKGDIR/extras/build_args.sh":
             output.append("    embuilder build libjpeg --pic")
+            output.append("    embuilder build zlib --pic")
             output.append("    embuilder build libpng-legacysjlj --pic")
             found_build_args = True
         output.append(line)
@@ -70,6 +78,7 @@ def main() -> None:
         found_url
         and found_hash
         and found_jpeg_link
+        and found_zlib_link
         and found_png_link
         and found_build_args
     ):
