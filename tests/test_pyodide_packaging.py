@@ -36,6 +36,7 @@ def test_prepare_pyodide_recipe_updates_only_pinned_source(tmp_path):
         "    - numpy\n"
         "build:\n"
         "  ldflags: |\n"
+        "    -ljpeg\n"
         "    -lpng-legacysjlj\n"
         "  script: |\n"
         "    source $PKGDIR/extras/build_args.sh\n",
@@ -49,7 +50,10 @@ def test_prepare_pyodide_recipe_updates_only_pinned_source(tmp_path):
     assert config["opencv"]["source_url"] in result
     assert config["opencv"]["source_sha256"] in result
     assert "    - numpy" in result
+    assert "    -sUSE_LIBJPEG=1\n" in result
+    assert "    -ljpeg\n" not in result
     assert "    -lpng-legacysjlj\n" in result
+    assert "    embuilder build libjpeg --pic\n" in result
     assert "    embuilder build libpng-legacysjlj --pic\n" in result
     assert result.index("embuilder build") < result.index("source $PKGDIR")
 
