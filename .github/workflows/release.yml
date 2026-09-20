@@ -67,8 +67,6 @@ jobs:
       - name: Build ABI-matched OpenCV, NumPy, and Pillow wheels
         shell: bash
         run: |
-          EMSDK_DIR="$(pyodide config get emsdk_dir)"
-          source "$EMSDK_DIR/emsdk_env.sh" >/dev/null
           pyodide build-recipes opencv-python Pillow \
             --recipe-dir "$RUNNER_TEMP/pyodide-recipes/packages" \
             --build-dir "$RUNNER_TEMP/pyodide-build" \
