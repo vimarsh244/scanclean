@@ -2,8 +2,8 @@
 """Pin the official Pyodide OpenCV recipe to ScanClean's OpenCV release.
 
 The recipe itself stays owned by Pyodide.  Release CI checks out a pinned
-pyodide-recipes commit and this script makes the deliberately small source
-version change needed by ScanClean.
+pyodide-recipes commit and this script makes the deliberately small source and
+Emscripten port adjustments needed by ScanClean.
 """
 
 import argparse
@@ -32,7 +32,8 @@ def main() -> None:
 
     source_lines = text.splitlines()
     in_source = False
-    found_url = found_hash = found_png_link = found_build_args = False
+    found_url = found_hash = found_jpeg_link = found_png_link = False
+    found_build_args = False
     output = []
     for line in source_lines:
         if line == "source:":
@@ -48,16 +49,30 @@ def main() -> None:
         elif in_source and line.startswith("  sha256:"):
             line = f"  sha256: {opencv['source_sha256']}"
             found_hash = True
+        elif line.strip() == "-ljpeg":
+            # Let Emscripten select the PIC port archive for a SIDE_MODULE.
+            # A plain -ljpeg can select the non-PIC sysroot archive on a clean
+            # GitHub runner, which wasm-ld correctly refuses to link.
+            indent = line[: len(line) - len(line.lstrip())]
+            line = f"{indent}-sUSE_LIBJPEG=1"
+            found_jpeg_link = True
         elif line.strip() == "-lpng-legacysjlj":
             # This is the port variant compatible with Pyodide's WASM longjmp
             # ABI. Emscripten does not build its PIC archive automatically.
             found_png_link = True
         elif line.strip() == "source $PKGDIR/extras/build_args.sh":
+            output.append("    embuilder build libjpeg --pic")
             output.append("    embuilder build libpng-legacysjlj --pic")
             found_build_args = True
         output.append(line)
 
-    if not (found_url and found_hash and found_png_link and found_build_args):
+    if not (
+        found_url
+        and found_hash
+        and found_jpeg_link
+        and found_png_link
+        and found_build_args
+    ):
         raise SystemExit(
             "Could not find the expected OpenCV source, build, or PNG linker fields"
         )
