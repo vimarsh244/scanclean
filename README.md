@@ -70,9 +70,16 @@ python -m build
 ```
 
 The ignored local `original/` directory enables full-resolution regression
-tests for all four development sample documents. When those PDFs are absent,
+tests for all seven development sample documents. When those PDFs are absent,
 pytest skips only the tests that need them; no source PDF or processed version
-is committed. Small numerical baseline records remain in the repository.
+is committed. Small numerical baseline records remain in the repository, and
+`python tools/refresh_baselines.py` retakes them when a cleaning stage changes
+on purpose.
+
+The margin rules are also covered by `tests/test_margins.py`, which builds the
+shapes that used to be cleaned away — type running out to the trim, a column of
+a table, the side of a printed border — out of rectangles, so those cases are
+tested without a source scan.
 
 ## Browser / Pyodide
 

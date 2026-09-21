@@ -265,7 +265,32 @@ def drop_border_artifacts(mask, gh, scale):
     return out, removed
 
 
-def edge_junk(mask, core, runs, zone, gh, ga, band_frac=0.09):
+def line_cover(runs, gh):
+    """Per column, how many separate lines of type carry ink there.
+
+    The honest measure of "how far does the text reach". A pixel count cannot
+    say it: a torn edge that the smear has chained onto a few lines contributes
+    plenty of pixels from very few lines, while the true column edge is reached
+    by nearly every line on the page.
+
+    Returns (cover, lines, components) - the per-column count, how many runs
+    were long enough to count as lines, and how many the smear produced in all.
+    """
+    W = runs.shape[1]
+    smear = cv2.dilate(runs, np.ones((1, max(3, int(2.0 * gh) | 1)), np.uint8))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(smear, 8)
+    cover = np.zeros(W, np.int32)
+    lines = 0
+    for j in range(1, n):
+        if stats[j, cv2.CC_STAT_WIDTH] < 3 * gh:
+            continue
+        lines += 1
+        x, y, w, h = stats[j, :4]
+        cover[x:x + w] += (runs[y:y + h, x:x + w] > 0).any(axis=0)
+    return cover, lines, n
+
+
+def edge_junk(mask, core, runs, zone, gh, ga, band_frac=0.09, keep=None):
     """Clear non-text ink in the margins: tears, folds, spine shadow.
 
     "In the margin" means beyond the sheet-edge band OR beyond the robust text
@@ -297,15 +322,7 @@ def edge_junk(mask, core, runs, zone, gh, ga, band_frac=0.09):
         # many. Line members are never deleted here whatever the column, so
         # erring narrow cannot cost a letter - it only lets the margin rules
         # look at more of the margin.
-        sm = cv2.dilate(runs, np.ones((1, max(3, int(2.0 * gh) | 1)), np.uint8))
-        ln, llab, lst, _ = cv2.connectedComponentsWithStats(sm, 8)
-        cover = np.zeros(W, np.int32)
-        for j in range(1, ln):
-            if lst[j, cv2.CC_STAT_WIDTH] < 3 * gh:
-                continue
-            x, y, w, h = lst[j, :4]
-            cols = (runs[y:y + h, x:x + w] > 0).any(axis=0)
-            cover[x:x + w] += cols
+        cover, _, ln = line_cover(runs, gh)
         need = 3 if ln > 8 else 1
         cc = np.nonzero(cover >= need)[0]
         if len(cc):
@@ -342,12 +359,14 @@ def edge_junk(mask, core, runs, zone, gh, ga, band_frac=0.09):
         x, y, w, h, a = stats[i, :5]
         if w >= 3 * gh and h <= 0.5 * gh:
             continue                          # a printed rule: furniture, not damage
+        sub = (lab[y:y + h, x:x + w] == i)
+        if keep is not None and keep[y:y + h, x:x + w][sub].any():
+            continue                          # printed furniture: a border side
         cx, cy = x + w / 2.0, y + h / 2.0
         in_side = cx < sx0 or cx > sx1
         in_vert = cy < sy0 or cy > sy1
         if not (in_side or in_vert):
             continue                          # inside the type area; not our business
-        sub = (lab[y:y + h, x:x + w] == i)
         if runs[y:y + h, x:x + w][sub].any():
             continue                          # part of a real line of type
         if a <= ga and h <= 1.2 * gh and zone[y:y + h, x:x + w][sub].any():
@@ -373,6 +392,15 @@ def edge_junk(mask, core, runs, zone, gh, ga, band_frac=0.09):
     out = mask.copy()
     out[removed > 0] = 0
     return out, removed
+
+
+def _letters(stats, gh, ga):
+    """Components shaped and sized like a letter of this page's type."""
+    w, h, a = stats[:, cv2.CC_STAT_WIDTH], stats[:, cv2.CC_STAT_HEIGHT], stats[:, cv2.CC_STAT_AREA]
+    sel = ((h >= 0.45 * gh) & (h <= 2.0 * gh) & (a >= 0.3 * ga)
+           & (w >= 0.15 * gh) & (h <= 4 * np.maximum(w, 1)))
+    sel[0] = False
+    return sel
 
 
 def split_merge(sub, gh, ga):
@@ -487,7 +515,8 @@ def blots(mask, core, gh, ga):
     return out, removed
 
 
-def scratches(mask, runs, gh, ga, core=None, min_len=5.0, max_agg=3.2, min_aspect=4.0):
+def scratches(mask, runs, gh, ga, core=None, keep=None, min_len=5.0, max_agg=3.2,
+              min_aspect=4.0, min_column=4, max_letter_frac=0.6):
     """Remove long thin creases and fold lines running down the page.
 
     These defeat every other rule by being FAINT: thresholding shatters a single
@@ -525,6 +554,22 @@ def scratches(mask, runs, gh, ga, core=None, min_len=5.0, max_agg=3.2, min_aspec
     owner = np.zeros(n, np.int32)
     owner[fl[sel]] = fj[sel]
 
+    # Script DOES produce a line six glyph-heights long and one wide: a column
+    # of a table, the figures down the last column of a table of contents, a
+    # file of ditto marks. The vertical closing reassembles one exactly as it
+    # reassembles a shattered crease, and the line finder cannot object - the
+    # entries stand too far apart to smear into the rows they belong to. What
+    # tells them apart is what the chain is MADE of. A crease shatters into
+    # slivers and crumbs; a column is a stack of letters. Measured over these
+    # samples: a chain that is 62-100% glyph-shaped, glyph-sized pieces is
+    # always type, one that is 0-19% always damage, with nothing in between.
+    letter = _letters(stats, gh, ga)
+    pieces = np.bincount(owner[1:], minlength=jn)
+    letters = np.bincount(owner[1:], weights=letter[1:].astype(np.float64), minlength=jn)
+    tall &= ~((pieces >= min_column) & (letters >= max_letter_frac * pieces))
+    if not tall.any():
+        return mask, np.zeros_like(mask)
+
     # Letters we are keeping, and a narrow reach either side of them. The
     # vertical closing that reassembles a shattered crease also chains in any
     # letter stroke sitting in the same column - measured on a folded flap,
@@ -543,6 +588,8 @@ def scratches(mask, runs, gh, ga, core=None, min_len=5.0, max_agg=3.2, min_aspec
             continue
         x, y, w, h = stats[i, :4]
         sub = (lab[y:y + h, x:x + w] == i)
+        if keep is not None and keep[y:y + h, x:x + w][sub].any():
+            continue                          # printed furniture: a border side
         if runs[y:y + h, x:x + w][sub].any():
             continue                          # real type crossed by the crease
         if (beside is not None and h <= 1.2 * gh
@@ -653,7 +700,7 @@ def is_sliver(w, h, gh):
     return h >= 1.8 * gh and w <= 0.35 * gh
 
 
-def edge_bands(mask, runs, gh, thresh=0.15, reach=0.2):
+def edge_bands(mask, runs, gh, thresh=0.15, reach=0.2, max_line_frac=0.2, keep=None):
     """Find the damaged strips down each side of the sheet, by structure.
 
     Text columns are blank BETWEEN lines of type; a torn edge, fold or spine
@@ -663,8 +710,32 @@ def edge_bands(mask, runs, gh, thresh=0.15, reach=0.2):
     immune to what defeats every per-component rule at the edge - damage that
     breaks into letter-sized fragments and chains itself onto the lines.
 
+    That inter-line evidence is only as good as the gaps, though, and on a
+    densely leaded Indic page there is barely a gap to read: the upper matras
+    and conjunct stems of the next line stand in it, and a column of ordinary
+    type then scores 0.10-0.21 - above the threshold. The scan is picked apart
+    column by column, so one such column anywhere in the outer fifth of the
+    sheet drags the band's inner edge out to meet it, and everything between
+    the trim and that column is condemned along with it. Measured on these
+    samples that is the first word of every line on the page, or the last.
+
+    So the band must also answer to the text: a strip of damage lies OUTSIDE
+    the type area, and the lines of type stop short of it. Where instead the
+    lines run on into the proposed band, whatever the inter-line reading says,
+    the band has been drawn across the text and the side stands down. Measured:
+    a true edge strip is reached by 0-12% of the page's lines (the few whose
+    ends the damage has chained itself onto), a misplaced band by 31-76%.
+
+    `keep` is printed furniture, and is not evidence. The side of a border box
+    is inked in every gap between every line, which is the whole signature this
+    stage hunts for, so a page printed inside a border reads as having a strip
+    of damage down each side of it - ending exactly where the border is, with
+    the type in between condemned.
+
     Returns (left, right): the inner edge of each band, 0 / W when none.
     """
+    if keep is not None:
+        mask = cv2.bitwise_and(mask, cv2.bitwise_not(keep))
     H, W = mask.shape
     rp = (runs > 0).sum(axis=1)
     if not rp.any():
@@ -683,17 +754,39 @@ def edge_bands(mask, runs, gh, thresh=0.15, reach=0.2):
     r = int(reach * W)
     lc = np.nonzero(prof[:r] >= thresh)[0]
     rc = np.nonzero(prof[W - r:] >= thresh)[0]
-    return (int(lc.max()) + 1 if len(lc) else 0,
-            W - r + int(rc.min()) if len(rc) else W)
+    left = int(lc.max()) + 1 if len(lc) else 0
+    right = W - r + int(rc.min()) if len(rc) else W
+
+    cover, lines, _ = line_cover(runs, gh)
+    limit = max(3, int(max_line_frac * lines))
+    if left > 0 and cover[:left].max() >= limit:
+        left = 0
+    if right < W and cover[right:].max() >= limit:
+        right = W
+    return left, right
 
 
-def clear_bands(mask, runs, gh, left, right):
+def clear_bands(mask, runs, gh, left, right, keep=None, ga=None, max_letter_frac=0.03):
     """Delete marks lying wholly inside an edge band.
 
     Wholly: a first letter that a strip runs into crosses the band's inner
-    edge and is kept. And anything chained to kept text by less than a letter
-    gap is kept too, so a line-final full stop or bracket that happens to fall
-    inside the band stays with its line.
+    edge and is kept. And anything chained to kept text across a word gap is
+    kept too, so a line-initial or line-final word that falls inside the band
+    stays with its line.
+
+    `keep` is ink that must stay wherever it lies - the printed rules and
+    ornaments. The side of a border box is the one thing here that cannot be
+    saved by chaining it to a line: it stands alone in the margin by design,
+    a clear word's width outside the type it encloses.
+
+    Finally, each side is asked what it cost. This stage deletes wholesale by
+    position, on evidence read column by column, and every way that evidence
+    can mislead ends the same way - the band drawn across type instead of
+    beside it. Rather than enumerate the ways, count the letters: a strip of
+    damage holds none of this page's type and measures 0.0-2.2% of it, while
+    a band that has reached into a column of figures or a line of words takes
+    3.7-16%. Over that, the side stands down and leaves the margin dirty,
+    which is this tool's standing preference over leaving it short of words.
     """
     H, W = mask.shape
     if left <= 0 and right >= W:
@@ -703,9 +796,17 @@ def clear_bands(mask, runs, gh, left, right):
     x, w = st[:, cv2.CC_STAT_LEFT], st[:, cv2.CC_STAT_WIDTH]
     inside = (x + w <= left + slack) | (x >= right - slack)
     inside[0] = False
+    if keep is not None and keep.any():
+        inside &= ~(_per_component(lab, n, (keep > 0).astype(np.float64), "max") > 0)
     is_run = _per_component(lab, n, (runs > 0).astype(np.float64), "max") > 0
-    # grow "kept text" along each line, one letter gap at a time
-    k = np.ones((max(3, int(0.3 * gh)), max(3, int(0.8 * gh) * 2 + 1)), np.uint8)
+    # Grow "kept text" along each line, one WORD gap at a time. A letter gap is
+    # not enough: what sits inside the band is a whole word - the first on its
+    # line or the last - and what it has to reach across to be recognised as
+    # part of that line is the space before or after it. Reaching only 0.8 of a
+    # glyph height stops short of the 1.2-2.0 these pages set, which is why a
+    # line-initial word inside the band was never chained to the line it
+    # belongs to. text_runs bridges word gaps at 2.0; match it.
+    k = np.ones((max(3, int(0.3 * gh)), max(3, int(2.0 * gh) | 1)), np.uint8)
     for _ in range(8):
         kept_text = np.where((is_run & ~inside)[lab], 255, 0).astype(np.uint8)
         near = _per_component(lab, n, (cv2.dilate(kept_text, k) > 0).astype(np.float64), "max") > 0
@@ -713,6 +814,14 @@ def clear_bands(mask, runs, gh, left, right):
         if not freed.any():
             break
         inside &= ~freed
+
+    if ga is not None:
+        letter = _letters(st, gh, ga)
+        budget = max_letter_frac * max(int(letter.sum()), 1)
+        on_left = st[:, cv2.CC_STAT_LEFT] + st[:, cv2.CC_STAT_WIDTH] <= left + slack
+        for side in (on_left, ~on_left):
+            if (inside & letter & side).sum() > budget:
+                inside &= ~side
     removed = np.where(inside[lab], 255, 0).astype(np.uint8)
     out = mask.copy()
     out[removed > 0] = 0
@@ -869,6 +978,63 @@ def ornament_rules(mask, gh, min_len=8.0, max_h=0.5, min_pieces=6):
     return np.where(keep[lab], 255, 0).astype(np.uint8)
 
 
+def _straight_rules(mask, gh, min_len, max_thick, max_wobble, max_ragged, min_rows):
+    """Components that are a drawn line down the array: see frame_rules."""
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    out = np.zeros_like(mask)
+    for i in range(1, n):
+        x, y, w, h = stats[i, :4]
+        if h < min_len * gh or w > max_thick * gh:
+            continue
+        sub = (lab[y:y + h, x:x + w] == i)
+        rows = np.nonzero(sub.any(axis=1))[0]
+        if len(rows) < min_rows * h:
+            continue                          # gappy: a chain of marks, not a line
+        spans = [np.nonzero(sub[r])[0] for r in rows]
+        centre = np.array([s.mean() for s in spans])
+        thick = np.array([float(np.ptp(s)) + 1.0 for s in spans])
+        fit = np.polyval(np.polyfit(rows, centre, 1), rows)
+        if np.std(centre - fit) > max_wobble * gh:
+            continue                          # wanders: a crease
+        if thick.mean() > 0.35 * gh or np.std(thick) > max_ragged * thick.mean():
+            continue                          # ragged or fat: a tear, not a rule
+        out[y:y + h, x:x + w][sub] = 255
+    return out
+
+
+def frame_rules(mask, gh, min_len=9.0, max_thick=1.0, max_wobble=0.08,
+                max_ragged=0.35, min_rows=0.7):
+    """Solid printed rules: the border round a page, the rule under a head.
+
+    `ornament_rules` above finds the case that arrives in PIECES - a wavy
+    ornament, shattered by thresholding into dozens of marks. A plain rule
+    arrives whole instead, as one component tens of glyphs long and a few
+    pixels through, and no count of pieces will ever find it. Its shape is
+    also the shape of everything this pipeline takes out of a margin - a
+    crease, the edge of a torn flap, the shadow down a spine - and it lies
+    where they lie. So stage after stage deletes it, and a book printed
+    inside a ruled border comes back with three sides of it, or none.
+
+    What no damage reproduces is that a rule was DRAWN. It holds one line and
+    one thickness along its whole length; a tear is ragged by nature and a
+    crease wanders. Measured on these samples a printed rule strays 0.03-0.06
+    of a glyph height from its own centre line and varies 0.17-0.24 in
+    thickness, while a strip of edge damage of the same length strays 0.17
+    and varies 0.98.
+
+    Kept apart from the ornaments above, which the caller folds into the lines
+    of type: those are shaped like lines and cost nothing there, but a rule
+    standing the height of the page is not one, and filing it as one wrecks
+    the line finding it joins. Smeared to bridge word gaps it welds every line
+    on the sheet into a single run, after which the page reads as having four
+    lines on it and every rule that counts them is blind.
+    """
+    down = _straight_rules(mask, gh, min_len, max_thick, max_wobble, max_ragged, min_rows)
+    across = _straight_rules(mask.T, gh, min_len, max_thick, max_wobble,
+                             max_ragged, min_rows).T
+    return cv2.bitwise_or(down, np.ascontiguousarray(across))
+
+
 def protection_zone(mask, gh, up=0.85, down=0.65, side=0.55):
     """Grow a zone around real text. Anything inside is never touched.
 
@@ -956,15 +1122,28 @@ def rescue_marks(removed, det, norm, chroma, kept, gh, near=False,
     those come back too: the usual trade.
 
     Excluded: anything not ink-black (dust is a grey blur), anything larger
-    than a diacritic, and anything in a coloured neighbourhood (the black
-    flecks inside a violet stamp). With `near`, which is used for marks the
-    edge and band stages took, the mark must also sit within a letter gap of
-    ink that survived, so a dot stranded in an edge band stays gone.
+    than `size`, and anything in a coloured neighbourhood (the black flecks
+    inside a violet stamp). With `near`, which is used for marks the edge and
+    band stages took, the mark must also sit within a letter gap of ink that
+    survived, so a dot stranded in an edge band stays gone.
+
+    `size` is a diacritic by default because the caller that rescues specks has
+    no other guard: widen it there and page dirt comes back with the dots. The
+    edge and band stages are a different case and are given a whole glyph. What
+    they take is not a speck but a region of the margin, and what a margin
+    holds besides damage is type the line finder could not confirm - a page
+    number, the figures in the last column of a table of contents. Those are
+    full-sized letters, and geometry cannot tell them from tear fragments; the
+    file says as much where it weighs the same question in `edge_junk`. The
+    detector can, that being the reason it is consulted at all, and its verdict
+    is still hedged here by darkness, by colour, and by `near`.
     """
     n, lab, st, cen = cv2.connectedComponentsWithStats(removed, 8)
     out = np.zeros_like(removed)
     H, W = removed.shape
-    r, R, vy = int(reach * gh), int(3 * gh), int(0.8 * gh)
+    r, R = int(reach * gh), int(3 * gh)
+    vy = int(max(0.8, reach) * gh)            # reach is a reach, in both axes
+    ok = []
     for j in range(1, n):
         x, y, w, h, _ = st[j]
         cx, cy = int(cen[j][0]), int(cen[j][1])
@@ -977,9 +1156,33 @@ def rescue_marks(removed, det, norm, chroma, kept, gh, near=False,
             win = chroma[max(0, cy - R):cy + R, max(0, cx - R):cx + R]
             if (win > colour).mean() > colour_frac:
                 continue
-        if near and not kept[max(0, y - vy):y + h + vy, max(0, x - r):x + w + r].any():
-            continue
-        out[y:y + h, x:x + w][sub] = 255
+        ok.append((x, y, w, h, sub))
+    if not near:
+        for x, y, w, h, sub in ok:
+            out[y:y + h, x:x + w][sub] = 255
+        return out
+
+    # A mark vouched for by the detector still has to sit beside surviving ink,
+    # or a speck stranded in an edge band comes back with the words. But the
+    # ink it sits beside may be another rescued mark: what these stages strand
+    # in a margin is often a whole column of type - the figures down the last
+    # column of a table of contents - and taken one at a time every figure in
+    # it looks equally alone. So let the rescue support itself, line-finding's
+    # own serial argument, seeded from ink that survived on its own account.
+    near_ink = kept.copy()
+    pending = list(ok)
+    while pending:
+        rest = []
+        for item in pending:
+            x, y, w, h, sub = item
+            if near_ink[max(0, y - vy):y + h + vy, max(0, x - r):x + w + r].any():
+                out[y:y + h, x:x + w][sub] = 255
+            else:
+                rest.append(item)
+        if len(rest) == len(pending):
+            break
+        near_ink = cv2.bitwise_or(kept, out)
+        pending = rest
     return out
 
 
@@ -1034,20 +1237,61 @@ def detector_gate(mask, det, boxes, keep, gh, pad=0.5):
     return cv2.bitwise_and(mask, cv2.bitwise_not(gone)), gone
 
 
+def attached_halo(norm, core, halo):
+    """Marks joined to a letter by ink too faint to threshold but not paper.
+
+    Tier 2 below rests on "ink bottoms out near 0, so a mark that never
+    approaches ink is dirt". That reads the mark alone, and it is wrong
+    wherever the IMPRESSION was weak: the lightly inked middle of a conjunct
+    breaks off from its own letter, is grey rather than black, stands a stroke
+    away from anything the line finder confirmed, and so answers to every test
+    for a smudge. Whole words came back with their insides eaten out.
+
+    What the mark alone cannot show, its surroundings can. Follow it at the
+    level where paper stops being paper: a detached piece of a letter is
+    joined to the rest of that letter by ink faint enough to have missed the
+    ink mask and far too dark to be the sheet, while a speck of dirt sits on
+    clean paper and its halo is an island. Measured on these pages, 75% of the
+    marks this tier took out of weakly printed words are joined to a letter
+    this way, against 0-35% of the marks it took off open paper.
+
+    `halo` is that level. It sits below the sheet - the background having been
+    flattened, paper reads 250-255 - and well above anything the ink mask
+    reached, which is the whole point: the bridge is made of exactly the ink
+    the mask could not see. It is deliberately not the tone curve's white
+    point, which answers a different question (what shall print as paper).
+    """
+    soft = ((norm < halo) * 255).astype(np.uint8)
+    n, lab = cv2.connectedComponents(soft, 8)[:2]
+    attached = np.zeros(max(n, 1), bool)
+    attached[np.unique(lab[core > 0])] = True
+    attached[0] = False
+    return attached[lab]
+
+
 def despeckle(mask, norm, core, zone, gh, ga,
-              max_area_frac=0.55, max_dim_frac=0.9, faint=150):
+              max_area_frac=0.55, max_dim_frac=0.9, faint=150, halo=236):
     """Two tiers, both conservative.
 
     Tier 1 - outside the protection zone: any small blob goes. Nothing that
-             belongs to a line of type can be here, by construction.
+             belongs to a line of type can be here, by construction - and
+             where that construction fails, the halo test catches it. The
+             zone is grown from the components the line finder confirmed, so
+             a word printed too weakly to confirm leaves a hole in it, and
+             tier 1 applies no test of darkness at all: measured on one such
+             word, pieces bottoming out at 44 - ink by any standard - were
+             deleted for sitting in the hole.
     Tier 2 - inside the zone: a blob goes only if it is provably not print.
              Letterpress ink on these pages bottoms out near 0; a blob whose
              darkest pixel never approaches ink is paper texture or a smudge.
-             It must additionally stand clear of real ink, so that a faint
-             fragment of an actual stroke is never taken for dirt.
+
+    Either way a mark is kept if it stands against real ink, or is joined to
+    a letter by its own halo (see :func:`attached_halo`), so that a faint
+    fragment of an actual stroke is never taken for dirt.
     """
     n, lab, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
     near_ink = cv2.dilate(core, np.ones((5, 5), np.uint8))
+    joined = attached_halo(norm, core, halo) if halo else None
     removed = np.zeros_like(mask)
     spared = 0
     for i in range(1, n):
@@ -1063,11 +1307,15 @@ def despeckle(mask, norm, core, zone, gh, ga,
             # small enough to pass as dust - so they were being deleted as
             # specks. Dirt is rarely 4:1 and horizontal; printed rules are.
             continue
+        touching = (near_ink[y:y + h, x:x + w][sub].any()
+                    or (joined is not None and joined[y:y + h, x:x + w][sub].any()))
         if not zone[y:y + h, x:x + w][sub].any():
-            removed[y:y + h, x:x + w][sub] = 255       # tier 1
+            if touching:
+                spared += 1
+            else:
+                removed[y:y + h, x:x + w][sub] = 255   # tier 1
             continue
         px = norm[y:y + h, x:x + w][sub]
-        touching = near_ink[y:y + h, x:x + w][sub].any()
         if faint and px.min() > faint and not touching:
             removed[y:y + h, x:x + w][sub] = 255       # tier 2
         else:
@@ -1230,14 +1478,22 @@ def analyse(bgr, dpi, opt):
     mask, thick = blob_bodies(mask, gh, ga, sr)
     zone, core, runs = protection_zone(mask, gh, up=opt.up, down=opt.down, side=opt.side)
     orn = ornament_rules(mask, gh)
-    core, runs = cv2.bitwise_or(core, orn), cv2.bitwise_or(runs, orn)
+    # Printed furniture that must survive every margin rule. The horizontal
+    # ornaments join the lines of type as well, being lines themselves; the
+    # border sides only join `core`, since counting them as lines is what
+    # blinds the line-based tests (see frame_rules).
+    keep = cv2.bitwise_or(orn, frame_rules(mask, gh))
+    core, runs = cv2.bitwise_or(core, keep), cv2.bitwise_or(runs, orn)
     box = text_block(core, gh, scale) if not opt.no_crop else (0, 0, mask.shape[1], mask.shape[0])
-    box = guard_box(box, runs, gh)
-    mask, edge = edge_junk(mask, core, runs, zone, gh, ga, band_frac=opt.band)
+    # Printed furniture is inside the frame too, literally: a border is the
+    # outermost thing on the sheet, so a crop drawn round the type alone paints
+    # it white having gone to the trouble of keeping it.
+    box = guard_box(box, cv2.bitwise_or(runs, keep), gh)
+    mask, edge = edge_junk(mask, core, runs, zone, gh, ga, band_frac=opt.band, keep=keep)
     mask, blot = blots(mask, core, gh, ga)
-    mask, crease = scratches(mask, runs, gh, ga, core)
-    bl, br = edge_bands(cv2.bitwise_or(mask, border), runs, gh)
-    mask, band = clear_bands(mask, runs, gh, bl, br)
+    mask, crease = scratches(mask, runs, gh, ga, core, keep=keep)
+    bl, br = edge_bands(cv2.bitwise_or(mask, border), runs, gh, keep=keep)
+    mask, band = clear_bands(mask, runs, gh, bl, br, keep=keep, ga=ga)
     mask, specks, spared = despeckle(mask, norm, core, zone, gh, ga,
                                      max_area_frac=opt.speck, faint=opt.faint)
 
@@ -1252,11 +1508,12 @@ def analyse(bgr, dpi, opt):
         kept = mask
         rescued = cv2.bitwise_or(
             rescue_marks(specks, dmask, norm, chroma, kept, gh),
-            rescue_marks(cv2.bitwise_or(band, edge), dmask, norm, chroma, kept, gh, near=True))
+            rescue_marks(cv2.bitwise_or(band, edge), dmask, norm, chroma, kept, gh,
+                         near=True, size=1.6, reach=1.2))
         back = cv2.bitwise_not(rescued)
         specks, band, edge = (cv2.bitwise_and(m, back) for m in (specks, band, edge))
         mask = cv2.bitwise_or(mask, rescued)
-        mask, gate = detector_gate(mask, dmask, dboxes, orn, gh)
+        mask, gate = detector_gate(mask, dmask, dboxes, keep, gh)
         stats.update(det_boxes=len(dboxes),
                      rescued=int(cv2.connectedComponentsWithStats(rescued, 8)[0] - 1),
                      gate_px=int((gate > 0).sum()))

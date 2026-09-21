@@ -94,7 +94,7 @@ def test_original_page_regression(case):
 
 
 def test_baselines_cover_every_local_sample_document():
-    expected = {f"Sample {number}.pdf" for number in range(1, 5)}
+    expected = {f"Sample {number}.pdf" for number in range(1, 8)}
     assert {case["file"] for case in BASELINE["cases"]} == expected
 
 
