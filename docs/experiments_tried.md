@@ -63,7 +63,7 @@ vowel signs (`ઓપેરા.` → `ઓપગ`) because a matra is too small to
 member and the margin rule then ate it. None were visible at thumbnail scale.
 
 `compare/index.html` (rebuild with `python3 build_compare.py`) is the other half of
-this: all 29 pages as before/after sliders at native resolution, which is how the
+this: every page as a before/after slider at native resolution, which is how the
 surviving creases and the clipped running head were spotted in the first place.
 
 Run BOTH audits after changing any threshold. Between them they have caught every
@@ -73,6 +73,29 @@ real defect found so far; neither catches all of them alone:
 scanclean original/*.pdf -o cleaned --audit              # per-pixel overlay
 python3 audit_lines.py                                   # ink lost from lines of type
 ```
+
+### Counting erased characters
+
+Both audits above are read by eye, and both measure the pipeline against its own
+opinion of where the text is — which is no help at all when that opinion is what
+went wrong. Three further documents (samples 5–7) were added later and broke
+exactly that way: whole first words, last words and table columns were deleted,
+and every internal counter read clean, because the stages that deleted them had
+first decided the text was not text.
+
+So score against a witness that has no stake in it. `audit_glyphs.py` counts the
+deleted marks that are glyph-shaped *and* that the bundled PP-OCRv6 detector
+independently places inside a line of type, and attributes each to the stage
+that took it:
+
+```bash
+python3 audit_glyphs.py                                  # characters erased, by stage
+```
+
+It is blunt — an ornament inside a detected box counts, and a character the
+detector missed does not — but it is a number, it needs no eye, and across the
+46 sample pages it moved from 236 to 38. That is the measurement every claim
+below rests on.
 
 ## Where a neural network helps, and where it does not
 
@@ -139,16 +162,20 @@ Adding it would be a second image stack for no capability gain.
 6. **Clear the edge bands.** A text column is blank *between* lines; a torn
    edge is inked continuously down the sheet. Columns whose inter-line gaps are
    ≥15% inked (text columns measure 1–8%) form a band, and marks lying wholly
-   inside it go — unless chained to kept text within a letter gap, so line-end
-   punctuation stays. This is what finally handles damage that shatters into
-   letter-sized pieces and chains itself onto the lines.
+   inside it go — unless chained to kept text within a *word* gap, so a
+   line-initial or line-final word stays with its line. This is what finally
+   handles damage that shatters into letter-sized pieces and chains itself onto
+   the lines. Three guards stop it doing the opposite (see below): lines of
+   type that run on into the band, printed furniture, and a cap on how many of
+   the page's letters a side may cost.
 7. **Clear the margins** of tears, folds and spine shadow.
 8. **Despeckle contextually** — the careful bit, per the table above.
 9. **Remove blots** — anything too big to be a letter that belongs to no line.
 10. **Remove creases** — long thin fold lines. These defeat every other rule by
    being faint: thresholding shatters one crease into a chain of fragments, each
    individually glyph-sized. Reconstructed with a vertical closing, the object is
-   six glyph-heights long and one wide, which no script produces.
+   six glyph-heights long and one wide — which script *does* produce, in the
+   narrow column of a table, so a chain made mostly of letters is spared.
 11. **Consult the text detector** (see above): rescue line members the
    despeckler took, then clear what lies outside the local column that no
    detected line owns.
@@ -266,6 +293,96 @@ it belong to a line of type — has proved safe on this material.
 
 So the ragged edge of a torn flap stays, on the pages that have one.
 
+## What samples 5–7 broke, and why
+
+Three more documents were added after the tool was working: a small-format
+prose book set to the trim (5), a book printed inside a ruled border (6), and
+one with an ornamental border and several errata tables (7). Nearly every erased
+character was on one of those three: the 29 pages the tool was tuned on
+contributed 11 of the 248 counted at the time, and the 17 new ones the rest.
+Every one of the causes is the same mistake in a different costume — **a stage
+that deletes by position, acting on evidence that had quietly stopped meaning
+what it was measured to mean.**
+
+**The margin band drawn across the text**, which accounted for six of every
+seven. `edge_bands` scores each
+column by how often it carries ink *between* lines of type, which separates a
+torn edge (0.2–0.8) from a text column (0.01–0.08) — on the documents it was
+measured on. Set Gujarati densely and there is barely an inter-line gap to read:
+the upper matras and conjunct stems of the next line stand in it, and a column of
+ordinary type scores 0.10–0.21. The stage reads columns one at a time and takes
+the *innermost* one over the threshold, so a single such column anywhere in the
+outer fifth of the sheet pulls the band's inner edge out to meet it, condemning
+everything between. On sample 5 that was the first word of every line on page 4,
+and the last word of every line on page 5.
+
+Three guards, because one was not enough and each catches a different shape of
+the mistake:
+
+- *The lines must stop short of it.* Damage lies outside the type area, so the
+  lines of type end before it starts. Measured: a true edge strip is reached by
+  0–12% of the page's lines (the few whose ends the damage has chained onto), a
+  misplaced band by 31–76%.
+- *Printed furniture is not evidence.* The side of a border box is inked in
+  every gap between every line — the signature exactly — so a bordered page
+  reads as damaged down both sides, with the band stopping where the border is.
+- *And then count the cost.* Rather than enumerate the remaining ways the
+  column evidence can mislead, measure what each side actually deleted: a strip
+  of damage holds none of the page's type and takes 0.0–2.2% of its letters,
+  while a band that has reached a column of figures takes 3.7–16%. Over 3%, the
+  side stands down and the margin stays dirty.
+
+The rescue was widened to match. A word inside the band has to reach across the
+space before or after it to be recognised as part of its line, and the reach was
+0.8 glyph heights against word gaps of 1.2–2.0. And where the line finder cannot
+confirm the type at all — the figures down the last column of a table of
+contents are each too short to be a line — the detector's verdict is taken
+instead, for whole glyphs and not just diacritics, still hedged by darkness,
+colour, and having to stand beside surviving ink. A column of such figures
+vouches for itself, one figure at a time, which is the same serial argument the
+line finder is built on.
+
+**Printed borders deleted as damage.** A vertical rule is tens of glyphs tall
+and a few pixels wide, standing in the margin — the shape of a crease, a torn
+flap, a spine shadow, in the place they occur. So `edge_junk`, `blots`,
+`scratches` and the band stage each took it in turn, and sample 6 came back with
+three sides of its border, or none. What no damage reproduces is that a rule was
+*drawn*: measured, a printed rule strays 0.03–0.06 of a glyph height from its own
+centre line and varies 0.17–0.24 in thickness, while edge damage of the same
+length strays 0.17 and varies 0.98. `frame_rules` finds them in both directions
+and the margin stages are given the result to leave alone.
+
+It has to be kept *apart* from the horizontal ornaments, which are folded into
+the lines of type. Doing the obvious thing and folding the border in with them
+cost more than it fixed: smeared to bridge word gaps, a rule the height of the
+page welds every line on the sheet into one run, the page reads as having four
+lines on it, and every rule that counts lines goes blind. That mistake alone put
+13 characters back on the floor before it was caught.
+
+**A table column read as a crease.** `scratches` exists because a faint crease
+shatters into glyph-sized fragments that are individually indistinguishable from
+letters, and argues that together they form "a line six glyph-heights long and
+one wide, which no script produces". Script does produce it: the narrow column
+of an errata table, a file of ditto marks. The distinction is what the chain is
+*made of* — measured, a chain that is 62–100% glyph-shaped, glyph-sized pieces is
+always type and one that is 0–19% is always damage, with nothing in between.
+
+**Words eaten hollow where the impression was weak.** The despeckler's second
+tier rests on "ink bottoms out near 0, so a mark that never approaches ink is
+dirt", and its first tier on "nothing that belongs to a line of type can be
+outside the protection zone" — which applies no darkness test at all. Both
+readings are of the mark alone, and both fail on a lightly inked word: its
+letters break into pieces, none is confirmed, the zone grown from the confirmed
+ones has a hole where the word is, and pieces bottoming out at 44 — ink by any
+standard — were deleted for sitting in the hole.
+
+What the mark alone cannot show, its surroundings can. Followed at the level
+where paper stops being paper, a detached piece of a letter is joined to the
+rest of that letter by ink too faint for the ink mask and far too dark to be the
+sheet; a speck of dirt sits on clean paper and its halo is an island. Measured,
+75% of the marks taken out of weakly printed words are joined this way against
+0–35% of those taken off open paper. Both tiers now consult it.
+
 ## Known limits
 
 - **Text on a folded flap is kept.** A torn neighbouring page folded over
@@ -284,3 +401,16 @@ So the ragged edge of a torn flap stays, on the pages that have one.
 - **Sepia pages disable stamp removal.** Where the type itself carries chroma
   above the threshold, colour cannot identify a stamp; the tool stands down and
   reports `colour_cast` rather than guessing.
+- **Letters missing from the scan stay missing.** Sample 5 page 4 is clipped at
+  the left in the source: its lines begin mid-character and the first letters
+  were never captured. The clipped remnants are kept, and nothing can restore
+  what the scanner did not see.
+- **A faint impression prints faint.** Where a word took less ink than its
+  neighbours, its strokes survive but stay pale — the tool has no business
+  darkening ink it did not measure. `--white 236` develops the mid-tones if a
+  printer needs more punch; it costs some paper texture in exchange.
+- **Corner ornaments on a border may go.** `frame_rules` finds the straight
+  sides, not the fleurons at the corners, which are compact marks far outside
+  the type area and indistinguishable from a blot by shape.
+- **An ornamental border made of repeating motifs is not protected** — only
+  plain drawn rules are. Sample 7's title page loses its frame.

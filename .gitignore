@@ -4,6 +4,9 @@ cleaned/
 cleaned-print/
 *.pdf
 
+# scratch analysis while chasing a defect
+work/
+
 # renders of the pages (comparison images, audits, experiment inputs/outputs)
 *.png
 *.jpg
