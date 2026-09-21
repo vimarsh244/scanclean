@@ -59,7 +59,9 @@ def test_prepare_pyodide_recipe_updates_only_pinned_source(tmp_path):
     assert "    embuilder build libjpeg --pic\n" in result
     assert "    embuilder build zlib --pic\n" in result
     assert "    embuilder build libpng-legacysjlj --pic\n" in result
-    assert result.index("embuilder build") < result.index("source $PKGDIR")
+    assert result.index("embuilder build libpng-legacysjlj --pic") < result.index(
+        "embuilder build libjpeg --pic"
+    ) < result.index("source $PKGDIR")
 
 
 def make_wheel(path, name, version, requirements=()):

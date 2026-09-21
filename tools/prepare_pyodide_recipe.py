@@ -70,9 +70,9 @@ def main() -> None:
             line = f"{indent}-sUSE_LIBPNG=1"
             found_png_link = True
         elif line.strip() == "source $PKGDIR/extras/build_args.sh":
+            output.append("    embuilder build libpng-legacysjlj --pic")
             output.append("    embuilder build libjpeg --pic")
             output.append("    embuilder build zlib --pic")
-            output.append("    embuilder build libpng-legacysjlj --pic")
             found_build_args = True
         output.append(line)
 

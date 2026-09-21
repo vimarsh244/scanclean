@@ -12,7 +12,7 @@ def test_public_imports():
     import scanclean
     from scanclean import Options, clean_page, make_pdf, write_pdf
 
-    assert scanclean.__version__ == "0.1.1"
+    assert scanclean.__version__ == "0.1.2"
     assert all(callable(item) for item in (Options, clean_page, make_pdf, write_pdf))
 
 
