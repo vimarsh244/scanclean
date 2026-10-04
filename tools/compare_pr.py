@@ -46,6 +46,8 @@ def main():
     parser.add_argument("--samples", nargs="+", type=int, default=[5, 6, 7])
     parser.add_argument("--out", type=Path, default=ROOT / "work" / "pr8-review")
     parser.add_argument("--white", type=float, default=224)
+    parser.add_argument("--restore-ink", type=float, default=0.0,
+                        help="ink restoration strength for current code only (0-1)")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     base = load_revision(args.base_ref)
@@ -59,6 +61,8 @@ def main():
             row = {"sample": sample, "page": index + 1, "stem": stem}
             for tag, module in (("base", base), ("current", core)):
                 opt = module.Options(white=args.white)
+                if tag == "current":
+                    opt.restore_ink = args.restore_ink
                 output, stats, _, out_dpi = module.clean_page(image, dpi, opt)
                 analysis = module.analyse(image, dpi, opt)
                 marks, _ = audit_glyphs.erased(image, dpi, opt, analysis=analysis)
@@ -80,19 +84,23 @@ def main():
         "current_core_sha256": hashlib.sha256(Path(core.__file__).read_bytes()).hexdigest(),
         "working_tree_modified": bool(subprocess.check_output(
         ["git", "diff", "HEAD", "--", "src/scanclean/core.py"], cwd=ROOT)),
-        "opencv": cv2.__version__, "white": args.white, "pages": rows}
+        "opencv": cv2.__version__, "white": args.white,
+        "restore_ink": args.restore_ink, "pages": rows}
     (args.out / "metrics.json").write_text(json.dumps(metadata, indent=2) + "\n")
     html = '''<!doctype html><meta charset="utf-8"><title>ScanClean comparison</title>
 <style>body{font:16px system-ui;background:#ddd;margin:16px}header{position:sticky;top:0;background:#ddd;padding:12px;z-index:1}main{display:flex;gap:12px;align-items:flex-start}section{flex:1;min-width:0}img{width:100%;display:block}h2{font-size:18px}select{font:inherit}</style>
 <header><label>Page <select id="page"></select></label> <label>Display width <input id="zoom" type="range" min="300" max="1800" value="500"></label><p id="counts"></p><div id="pdfs"></div></header>
-<main><section><h2>Original</h2><img id="original"></section><section><h2>Base branch</h2><img id="base"></section><section><h2>Current branch</h2><img id="current"></section></main>
+<main><section><h2>Original</h2><img id="original"></section><section><h2>Reference version</h2><img id="base"></section><section><h2 id="current-label">Current branch</h2><img id="current"></section></main>
 <script>const pages=DATA;
+const restoration=RESTORATION;
+if(restoration>0)document.getElementById('current-label').textContent=`Ink restoration (strength ${restoration})`;
 const select=document.getElementById('page');
 for(const [i,p] of pages.entries()){const o=document.createElement('option');o.value=i;o.textContent=`Sample ${p.sample}, page ${p.page}`;select.append(o)}
 function show(){const p=pages[select.value];for(const tag of ['original','base','current'])document.getElementById(tag).src=`${p.stem}-${tag}.png`;document.getElementById('counts').textContent=`Suspect erased marks (including crop): ${p.base.erased} → ${p.current.erased}. This is a diagnostic proxy; inspect faint text visually.`;const links=document.getElementById('pdfs');links.replaceChildren();for(const tag of ['base','current']){const a=document.createElement('a');a.href=`Sample ${p.sample}.${tag}.pdf`;a.textContent=`Download ${tag} PDF`;a.style.marginRight='16px';links.append(a)}}
 function zoom(){for(const s of document.querySelectorAll('section')){s.style.flex='none';s.style.width=document.getElementById('zoom').value+'px'}}
 select.onchange=show;document.getElementById('zoom').oninput=zoom;show();zoom();</script>'''
-    (args.out / "index.html").write_text(html.replace("DATA", json.dumps(rows)))
+    (args.out / "index.html").write_text(
+        html.replace("DATA", json.dumps(rows)).replace("RESTORATION", str(args.restore_ink)))
     for sample in args.samples:
         subset = [r for r in rows if r["sample"] == sample]
         print(f"Sample {sample}: " + " -> ".join(str(sum(r[t]["erased"] for r in subset))

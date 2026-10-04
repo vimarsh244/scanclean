@@ -60,6 +60,13 @@ def page_images(pdf_path, dpi=None):
             )
 
 
+def ink_strength(value):
+    strength = float(value)
+    if not 0 <= strength <= 1:
+        raise argparse.ArgumentTypeError("ink restoration strength must be between 0 and 1")
+    return strength
+
+
 def build_parser():
     parser = argparse.ArgumentParser(description="Clean scanned book PDFs for printing.")
     parser.add_argument("inputs", nargs="+")
@@ -103,6 +110,11 @@ def build_parser():
     )
     parser.add_argument("--black", type=float, default=40, help="tone: full-black point")
     parser.add_argument("--white", type=float, default=224, help="tone: paper-white point")
+    parser.add_argument(
+        "--restore-ink", type=ink_strength, nargs="?", const=1.0, default=0.0,
+        metavar="STRENGTH",
+        help="strengthen faint strokes inside text (0-1; flag alone uses 1)",
+    )
     parser.add_argument(
         "--speck", type=float, default=0.55, help="maximum speck area / median glyph area"
     )

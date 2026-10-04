@@ -20,7 +20,8 @@ Pipeline per page (see README.md for the reasoning behind each):
   7. text detector (optional)   -> PP-OCRv6 tiny via cv2.dnn: rescue marks inside
                                    detected lines, clear ink outside the local
                                    column that no line owns
-  8. tonal composition          -> white paper, full-greyscale antialiased text
+  8. tonal composition          -> optional faint-stroke enhancement, white paper,
+                                   full-greyscale antialiased text
   9. PDF assembly               -> lossless FlateDecode, own writer
 """
 
@@ -58,6 +59,7 @@ class Options:
     faint: float = 150
     bilevel: bool = False
     audit: bool = False
+    restore_ink: float = 0.0
 
 
 # ---------------------------------------------------------------- stages
@@ -1325,6 +1327,31 @@ def despeckle(mask, norm, core, zone, gh, ga,
     return out, removed, spared
 
 
+def restore_ink(norm, text, kill, gh, strength=1.0):
+    """Strengthen measured faint strokes inside confirmed text, before clipping.
+
+    A dark ridge relative to its immediate surroundings is evidence of a
+    stroke, even when it missed the binary ink mask. Increase that ridge's
+    contrast without dilating letters or drawing across white gaps. Flat
+    paper, text-exterior pixels, and explicit deletions are excluded. Paper
+    texture inside text can still look like a faint stroke, so this is opt-in.
+    """
+    if not np.isfinite(strength) or not 0 <= strength <= 1:
+        raise ValueError("restore_ink strength must be between 0 and 1")
+    if strength == 0:
+        return norm
+    gray = norm.astype(np.float32)
+    local = cv2.GaussianBlur(gray, (0, 0), max(1.0, 0.12 * gh))
+    # Ignore shallow grain; feather the signal gate rather than binarising
+    # it, so antialiased stroke edges stay antialiased.
+    ridge = np.clip((local - gray - 2.0) / 6.0, 0, 1)
+    evidence = ridge * np.clip((249.0 - gray) / 10.0, 0, 1)
+    excluded = cv2.dilate(kill, np.ones((3, 3), np.uint8)) > 0
+    evidence *= (text > 0) & ~excluded
+    gain = 1.0 + 2.0 * strength * evidence
+    return np.clip(255.0 - (255.0 - gray) * gain, 0, 255).astype(np.uint8)
+
+
 def compose(norm, kill, box, black=40, white=224, soften=1.0, ink=None):
     """Paper to pure white, ink kept as antialiased greyscale.
 
@@ -1547,6 +1574,7 @@ def analyse(bgr, dpi, opt):
                   blot=blot, crease=crease, band=band, specks=specks, gate=gate,
                   rescued=rescued)
     return dict(norm=norm, mask=mask, kill=kill, core=core, runs=runs, zone=zone,
+                text=det[0] if det is not None else zone,
                 box=box, gh=gh, ga=ga, stats=stats, stages=stages)
 
 
@@ -1555,11 +1583,18 @@ def clean_page(bgr, dpi=300, opts=None):
     if bgr.ndim == 2:
         bgr = cv2.cvtColor(bgr, cv2.COLOR_GRAY2BGR)
     opt = opts if opts is not None else Options()
+    strength = getattr(opt, "restore_ink", 0.0)
+    if not np.isfinite(strength) or not 0 <= strength <= 1:
+        raise ValueError("restore_ink strength must be between 0 and 1")
     a = analyse(bgr, dpi, opt)
     if a["gh"] is None:
         return a["norm"], a["stats"], None, dpi
     norm, kill, box, stats = a["norm"], a["kill"], a["box"], a["stats"]
     scale = dpi / 300.0
+    if strength:
+        enhanced = restore_ink(norm, a["text"], kill, a["gh"], strength)
+        stats["ink_enhanced_px"] = int((norm.astype(np.int16) - enhanced >= 8).sum())
+        norm = enhanced
     out = compose(norm, kill, box, black=opt.black, white=opt.white, soften=opt.soften,
                   ink=a["mask"] if opt.paper_floor else None)
 
@@ -1576,7 +1611,7 @@ def clean_page(bgr, dpi=300, opts=None):
 
     audit = None
     if opt.audit:
-        audit = cv2.cvtColor(norm, cv2.COLOR_GRAY2BGR)
+        audit = cv2.cvtColor(a["norm"], cv2.COLOR_GRAY2BGR)
         fat = cv2.dilate(kill, np.ones((5, 5), np.uint8))
         audit[fat > 0] = (0, 0, 255)                  # every deleted pixel, in red
         x0, y0, x1, y1 = box

@@ -81,3 +81,40 @@ but their now-stale exact output hashes are explicitly pending (`null`);
 Both the wheel and source distribution built successfully. This environment
 lacks Python's `ensurepip`, so the build used the already-provisioned project
 environment with `--no-isolation`.
+
+## Follow-up: opt-in strengthening of faint ink
+
+The next review of Sample 5 page 2 confirmed that preserving fragments alone
+still leaves weak words too pale. `--restore-ink` now adds a rendering layer
+before the tone curve. It detects dark ridges relative to nearby paper within
+confirmed text, then increases their contrast with a soft signal gate. It
+draws from measured grayscale values rather than reconstructing glyphs from
+OCR or applying morphological dilation. With the detector disabled or
+unavailable, the existing text protection zone provides the region.
+
+The flag alone uses strength 1; `--restore-ink 0.5` is a gentler setting and
+`Options(restore_ink=1)` enables it through the Python API. It is off by default
+because it intentionally strengthens print; texture within text can also be
+strengthened if it resembles a stroke. Explicit deletion masks and their
+one-pixel neighbourhood are excluded from enhancement. Audit overlays retain
+the source grayscale rather than the enhanced grayscale.
+
+Compared all 17 supplied pages against the previous PR commit, `7b056a4`, with
+restoration at strength 1. The erasure audit is unchanged (2, 20, and 7 for
+Samples 5, 6, and 7); that instrument counts deletion decisions and does not
+measure stroke visibility. The dedicated comparison is written to ignored
+`work/ink-restoration/review/` with both versions of all three PDFs.
+
+In the weak-word crop on Sample 5 page 2 (`[60, 900, 860, 1400]`), 1,375 pixels
+with faint source evidence (normalized grayscale 140–235) that previously
+rendered at 245 or above now render below 224. Dark pixel area below 160 grows
+from 28,272 to 40,841. These figures describe the intentional contrast change,
+not character accuracy. Visual inspection shows more readable weak strokes;
+some genuine breaks in the impression still remain.
+
+Validation for this follow-up: 50 tests passed, six absent-fixture tests skipped;
+wheel and source distribution builds passed. Tests include the actual faint
+region of Sample 5 page 2, white letter openings and gaps, flat/noisy paper,
+unchanged exterior pixels, explicit deletions, strength controls, CLI parsing,
+and retaining source values in audits. Default outputs and baseline records
+are unchanged by this opt-in feature.

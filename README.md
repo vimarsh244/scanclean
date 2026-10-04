@@ -56,7 +56,18 @@ The desktop CLI accepts one or more PDFs and preserves the existing options:
 scanclean input.pdf -o cleaned
 scanclean input.pdf -o cleaned --audit
 scanclean input.pdf -o cleaned --upscale 2 --bilevel
+scanclean input.pdf -o cleaned --restore-ink
+scanclean input.pdf -o cleaned --restore-ink 0.5
 ```
+
+`--restore-ink` strengthens faint strokes within detected text lines before
+the white-point mapping can discard them. It uses local contrast in the source
+scan, preserving white letter openings and gaps rather than dilating the font.
+The flag alone uses strength 1; values from 0 to 1 adjust the effect. It is off
+by default because it deliberately darkens print and may also strengthen
+texture inside text. With `--no-detect`, the existing text protection zone
+provides the enhancement region. The Python equivalent is
+`Options(restore_ink=1)`.
 
 The PDF input path requires the Poppler commands `pdfimages`, `pdfinfo`, and
 `pdftoppm` on `PATH`. Poppler is not needed when calling `clean_page()` with an
@@ -89,6 +100,14 @@ audit includes surviving ink lost to cropping and aligns its detector with
 deskewed pages. Its counts are suspected glyph deletions, not OCR accuracy;
 inspect faint text at full resolution too. See the
 [review of the supplied samples](docs/pr8_sample_review.md) for results and limits.
+
+Use `--restore-ink 1` on the comparison command to enhance the current version
+only. This compares the earlier PR output with the added ink enhancement:
+
+```bash
+python tools/compare_pr.py --base-ref 7b056a4 --restore-ink 1 \
+  --out work/ink-restoration/review
+```
 
 ## Browser / Pyodide
 
