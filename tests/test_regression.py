@@ -82,7 +82,9 @@ def test_original_page_regression(case):
         and cv2.__version__ == BASELINE["opencv"]
         and np.__version__ == BASELINE["numpy"]
     )
-    if same_runtime:
+    # A rendering change invalidates exact hashes even on absent fixtures.
+    # Keep their numerical checks until all originals can be remeasured.
+    if same_runtime and case["output_sha256"] is not None:
         assert hashlib.sha256(output.tobytes()).hexdigest() == case["output_sha256"]
 
     pdf = make_pdf([output], [out_dpi])
@@ -94,7 +96,7 @@ def test_original_page_regression(case):
 
 
 def test_baselines_cover_every_local_sample_document():
-    expected = {f"Sample {number}.pdf" for number in range(1, 5)}
+    expected = {f"Sample {number}.pdf" for number in range(1, 8)}
     assert {case["file"] for case in BASELINE["cases"]} == expected
 
 

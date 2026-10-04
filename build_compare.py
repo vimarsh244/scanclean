@@ -22,7 +22,7 @@ from PIL import Image
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, "compare")
 IMG = os.path.join(OUT, "img")
-SAMPLES = [1, 2, 3, 4]
+SAMPLES = [1, 2, 3, 4, 5, 6, 7]
 MARK = "pages = /*DATA*/"
 
 

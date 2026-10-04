@@ -56,7 +56,26 @@ The desktop CLI accepts one or more PDFs and preserves the existing options:
 scanclean input.pdf -o cleaned
 scanclean input.pdf -o cleaned --audit
 scanclean input.pdf -o cleaned --upscale 2 --bilevel
+scanclean input.pdf -o cleaned --restore-ink
+scanclean input.pdf -o cleaned --restore-ink 0.5
 ```
+
+`--restore-ink` strengthens faint strokes within detected text lines before
+the white-point mapping can discard them. It estimates local paper contrast
+in the source scan and enhances weak print while leaving already dark strokes
+and their rims alone, preserving white letter openings and gaps.
+The flag alone uses strength 1; values from 0 to 1 adjust the effect. It is off
+by default because it deliberately darkens print and may also strengthen
+texture inside text. With `--no-detect`, the existing text protection zone
+provides the enhancement region. The Python equivalent is
+`Options(restore_ink=1)`.
+
+Restoration examines several source contrast levels and groups nearby stroke
+fragments at the page’s font scale. A plausible letter or word can be recovered
+when it contains surviving ink or sits beside it on the same text line, even
+if its own faint strokes were all classified as specks. Grouping only locates
+measured source ink; it does not paint connecting pixels across white gaps.
+Other explicit deletion stages remain excluded.
 
 The PDF input path requires the Poppler commands `pdfimages`, `pdfinfo`, and
 `pdftoppm` on `PATH`. Poppler is not needed when calling `clean_page()` with an
@@ -70,9 +89,16 @@ python -m build
 ```
 
 The ignored local `original/` directory enables full-resolution regression
-tests for all four development sample documents. When those PDFs are absent,
+tests for all seven development sample documents. When those PDFs are absent,
 pytest skips only the tests that need them; no source PDF or processed version
-is committed. Small numerical baseline records remain in the repository.
+is committed. Small numerical baseline records remain in the repository, and
+`python tools/refresh_baselines.py` retakes them when a cleaning stage changes
+on purpose.
+
+The margin rules are also covered by `tests/test_margins.py`, which builds the
+shapes that used to be cleaned away — type running out to the trim, a column of
+a table, the side of a printed border — out of rectangles, so those cases are
+tested without a source scan.
 
 ## Browser / Pyodide
 
