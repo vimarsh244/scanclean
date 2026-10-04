@@ -396,6 +396,64 @@ def edge_junk(mask, core, runs, zone, gh, ga, band_frac=0.09, keep=None):
     return out, removed
 
 
+def margin_streaks(mask, runs, zone, keep, gh):
+    """Clear long torn-edge trails between text rows, even when fused to type.
+
+    A line finder can promote a short piece of a tear into a word. Look for
+    continuity over several glyph heights instead of trusting that component's
+    line membership. Only side margins are considered; actual text rows,
+    nearby diacritics and printed furniture remain protected. Closing gaps is
+    evidence only: deletions contain source ink, never new connecting pixels.
+    """
+    _, W = mask.shape
+    width = max(1, int(0.15 * W))
+    # Sparse title pages and decorative frames do not give enough body-text
+    # evidence to distinguish a margin trail from printed furniture safely.
+    rows = (np.count_nonzero(runs[:, width:W - width], axis=1)
+            >= max(2 * gh, 0.04 * W)).astype(np.uint8)
+    if rows.mean() < 0.25:
+        return mask.copy(), np.zeros_like(mask)
+    side = np.zeros_like(mask)
+    side[:, :width] = side[:, W - width:] = 255
+    source = cv2.bitwise_and(mask, side)
+    tolerance = max(3, int(0.35 * gh) | 1)
+    wide = cv2.dilate(source, np.ones((1, tolerance), np.uint8))
+    joined = cv2.morphologyEx(
+        wide, cv2.MORPH_CLOSE, np.ones((max(3, int(0.4 * gh) | 1), 1), np.uint8),
+        borderType=cv2.BORDER_CONSTANT, borderValue=0)
+    line = cv2.morphologyEx(
+        joined, cv2.MORPH_OPEN, np.ones((max(3, int(3 * gh) | 1), 1), np.uint8),
+        borderType=cv2.BORDER_CONSTANT, borderValue=0)
+    line = cv2.erode(line, np.ones((1, tolerance), np.uint8))
+    removed = cv2.bitwise_and(line, source)
+    # Read row height from the inner text, where edge damage cannot inflate it.
+    rows = cv2.dilate(rows[:, None],
+                      np.ones((max(3, int(0.5 * gh) | 1), 1), np.uint8))
+    removed[rows[:, 0] > 0] = 0
+    # Frame corners and ornaments may be separated from their straight rule
+    # by threshold gaps. Protect their neighbourhood as well as the rule.
+    if keep.any():
+        furniture_distance = cv2.distanceTransform((keep == 0).astype(np.uint8),
+                                                   cv2.DIST_L2, 5)
+        removed[furniture_distance <= 5 * gh] = 0
+    # Loose dots and short matras can sit above the main row projection.
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(mask, 8)
+    small = ((stats[:, 2] <= 0.5 * gh) & (stats[:, 3] <= 0.5 * gh))
+    small[0] = False
+    marks = np.where(small[labels], 255, 0).astype(np.uint8)
+    # A dot may touch the tear itself. Strip its thin vertical attachment
+    # before measuring it, then protect the short horizontal body and its rim.
+    bodies = cv2.morphologyEx(mask, cv2.MORPH_OPEN,
+                             np.ones((1, max(3, int(0.15 * gh) | 1)), np.uint8))
+    _, labels, stats, _ = cv2.connectedComponentsWithStats(bodies, 8)
+    short = (stats[:, 3] <= 0.5 * gh) & (stats[:, 2] <= 0.5 * gh)
+    short[0] = False
+    marks |= np.where(short[labels], 255, 0).astype(np.uint8)
+    marks = cv2.dilate(marks, np.ones((3, 3), np.uint8))
+    removed[(marks > 0) & (zone > 0)] = 0
+    return cv2.bitwise_and(mask, cv2.bitwise_not(removed)), removed
+
+
 def _letters(stats, gh, ga):
     """Components shaped and sized like a letter of this page's type."""
     w, h, a = stats[:, cv2.CC_STAT_WIDTH], stats[:, cv2.CC_STAT_HEIGHT], stats[:, cv2.CC_STAT_AREA]
@@ -1381,11 +1439,10 @@ def restore_ink(norm, text, kill, gh, strength=1.0):
     """Strengthen measured faint strokes inside confirmed text, before clipping.
 
     Contrast against estimated local paper is evidence of a stroke, even when
-    it missed the binary ink mask. Weakly inked neighbourhoods receive more
-    gain than already dark print, without dilating letters or drawing across
-    white gaps. Flat paper, text-exterior pixels, and explicit deletions are
-    excluded. Paper
-    texture inside text can still look like a faint stroke, so this is opt-in.
+    it missed the binary ink mask. Only weakly inked neighbourhoods receive
+    gain, without dilating letters or drawing across white gaps. Flat paper, text-exterior pixels, and explicit deletions are
+    excluded. Paper texture inside text can still look like a faint stroke,
+    so this is opt-in.
     """
     if not np.isfinite(strength) or not 0 <= strength <= 1:
         raise ValueError("restore_ink strength must be between 0 and 1")
@@ -1400,7 +1457,10 @@ def restore_ink(norm, text, kill, gh, strength=1.0):
     evidence *= (text > 0) & ~excluded
     size = max(3, int(0.3 * gh) | 1)
     darkest = cv2.erode(gray, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
-    weakness = 0.5 + 0.5 * np.clip((darkest - 60.0) / 100.0, 0, 1)
+    # A dark core already survives the tone curve. Leave it AND its rim
+    # alone: pixel brightness alone would mistake an antialiased bindi edge
+    # for faded ink and enlarge it. Only locally weak strokes receive gain.
+    weakness = np.clip((darkest - 100.0) / 80.0, 0, 1)
     gain = 1.0 + 2.5 * strength * evidence * weakness
     return np.clip(255.0 - (255.0 - gray) * gain, 0, 255).astype(np.uint8)
 
@@ -1580,6 +1640,8 @@ def analyse(bgr, dpi, opt):
     mask, band = clear_bands(mask, runs, gh, bl, br, keep=keep, ga=ga)
     mask, specks, spared = despeckle(mask, norm, core, zone, gh, ga,
                                      max_area_frac=opt.speck, faint=opt.faint)
+    mask, streak = margin_streaks(mask, runs, zone, keep, gh)
+    crease = cv2.bitwise_or(crease, streak)
 
     # Second opinion from a text detector: put back line members too small to
     # be protected, then clear what lies outside the column and no line owns.

@@ -61,9 +61,9 @@ scanclean input.pdf -o cleaned --restore-ink 0.5
 ```
 
 `--restore-ink` strengthens faint strokes within detected text lines before
-the white-point mapping can discard them. It estimates local paper contrast in the source
-scan and gives weak print more gain than already dark print, preserving white
-letter openings and gaps.
+the white-point mapping can discard them. It estimates local paper contrast
+in the source scan and enhances weak print while leaving already dark strokes
+and their rims alone, preserving white letter openings and gaps.
 The flag alone uses strength 1; values from 0 to 1 adjust the effect. It is off
 by default because it deliberately darkens print and may also strengthen
 texture inside text. With `--no-detect`, the existing text protection zone
@@ -99,23 +99,6 @@ The margin rules are also covered by `tests/test_margins.py`, which builds the
 shapes that used to be cleaned away — type running out to the trim, a column of
 a table, the side of a printed border — out of rectangles, so those cases are
 tested without a source scan.
-
-To compare the local samples against another Git revision without changing
-branches, run `python tools/compare_pr.py --base-ref main`. This writes lossless
-page images, both sets of cleaned PDFs, an HTML comparison with adjustable
-display width, and diagnostic metrics to ignored `work/pr8-review/`. The
-audit includes surviving ink lost to cropping and aligns its detector with
-deskewed pages. Its counts are suspected glyph deletions, not OCR accuracy;
-inspect faint text at full resolution too. See the
-[review of the supplied samples](docs/pr8_sample_review.md) for results and limits.
-
-Use `--restore-ink 1` on the comparison command to enhance the current version
-only. This compares the earlier PR output with the added ink enhancement:
-
-```bash
-python tools/compare_pr.py --base-ref 7b056a4 --restore-ink 1 \
-  --out work/ink-restoration/review
-```
 
 ## Browser / Pyodide
 

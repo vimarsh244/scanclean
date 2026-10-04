@@ -201,7 +201,9 @@ def test_sample5_page2_faint_strokes_become_visible_without_darkening_blank_marg
     # This is the faint-word region in the user's first screenshot. More of
     # its existing strokes must be readable, rather than merely counting the
     # same glyph components that survived analysis in both versions.
-    assert (after < 160).sum() > 1.25 * (before < 160).sum()
+    # Selective recovery must improve faint strokes without requiring the
+    # blanket darkening that previously thickened already-legible print.
+    assert (after < 160).sum() > 1.15 * (before < 160).sum()
     assert ((before >= 245) & (after < 224)).sum() > 500
     assert np.array_equal(enhanced[:90], previous[:90])
     # The top and middle of "દૂ" in "દૂર કર્યું હતું" used to be removed as
@@ -210,3 +212,24 @@ def test_sample5_page2_faint_strokes_become_visible_without_darkening_blank_marg
     assert (enhanced[1196:1203, 355:369] < 160).sum() >= 15
     # The disconnected inner curve in "રહેવું" must survive too.
     assert (enhanced[1052:1057, 393:404] < 160).sum() >= 18
+
+
+@pytest.mark.parametrize("darkness", [20, 60, 100])
+def test_restoration_does_not_thicken_dark_dots_or_vowel_marks(darkness):
+    norm = np.full((120, 180), 255, np.uint8)
+    cv2.circle(norm, (40, 35), 3, darkness, -1, cv2.LINE_AA)
+    cv2.line(norm, (80, 30), (80, 53), darkness, 2, cv2.LINE_AA)
+    norm = cv2.GaussianBlur(norm, (3, 3), 0.6)
+    enhanced = core.restore_ink(norm, np.full_like(norm, 255), np.zeros_like(norm), 24)
+
+    # Antialiased rims must retain their original width as well as their core.
+    assert np.array_equal(enhanced < 224, norm < 224)
+    assert np.array_equal(enhanced[norm < 160], norm[norm < 160])
+
+
+def test_fade_gate_ignores_dark_rims_but_develops_weak_strokes():
+    norm, text, kill = faint_page()
+    enhanced = core.restore_ink(norm, text, kill, 24)
+
+    assert np.array_equal(enhanced[35:70, 95:125], norm[35:70, 95:125])
+    assert enhanced[50, 30] < 170

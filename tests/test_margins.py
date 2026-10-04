@@ -199,3 +199,73 @@ def test_paper_floor_preserves_connected_faint_strokes_but_whitens_isolated_text
     assert output[46, 80] < 200
     assert output[46, 142] == 255
     assert removed[46, 88] > 250       # halo support must not undo a deletion
+
+
+def test_margin_streaks_separates_a_tear_from_the_text_row_it_touches():
+    mask = np.zeros((320, 400), np.uint8)
+    cv2.line(mask, (25, 30), (27, 290), 255, 2)
+    for y in (85, 130, 175, 220, 265):
+        mask[y:y + 19, 25:300] = 255  # tear fused into type, falsely confirmed
+    runs = mask.copy()
+    zone = np.zeros_like(mask)
+    keep = np.zeros_like(mask)
+
+    out, removed = sc.margin_streaks(mask, runs, zone, keep, GH)
+
+    assert removed[35:75, 20:32].any()
+    assert removed[120:280, 20:32].any()
+    assert np.array_equal(out[80:109], mask[80:109])
+    assert not removed[mask == 0].any()
+
+
+def test_margin_streaks_keeps_border_rules_columns_and_loose_diacritics():
+    mask, runs = ruled_page(text_left=20, width=400, height=680)
+    rule = np.zeros_like(mask)
+    rule[30:700, 5:8] = 255
+    mask |= rule
+    # A loose bindi near a tear trail, above the central row's protection.
+    mask[32:35, 29:32] = 255
+    mask[20:140, 30] = 255
+    zone = np.zeros_like(mask)
+    zone[28:40, 25:36] = 255
+
+    out, removed = sc.margin_streaks(mask, runs, zone, rule, GH)
+
+    assert np.array_equal(out[rule > 0], mask[rule > 0])
+    assert np.array_equal(out[32:35, 29:32], mask[32:35, 29:32])
+    assert np.array_equal(out[runs > 0], mask[runs > 0])
+    # A regularly spaced column of figures is not a continuous streak.
+    column = np.zeros_like(mask)
+    for y in range(30, 700, 50):
+        cv2.rectangle(column, (15, y), (24, y + 18), 255, 2)
+    _, removed = sc.margin_streaks(column, column, np.zeros_like(mask), rule, GH)
+    assert not removed.any()
+
+
+def test_margin_streaks_stands_down_on_a_sparse_decorated_title_page():
+    mask = np.zeros((760, 400), np.uint8)
+    cv2.rectangle(mask, (25, 30), (375, 700), 255, 2)
+    for y in range(50, 700, 35):
+        cv2.circle(mask, (25, y), 5, 255, 1)
+    runs = np.zeros_like(mask)
+    for y in (180, 300, 420):
+        runs[y:y + 20, 120:280] = 255
+    mask |= runs
+
+    out, removed = sc.margin_streaks(mask, runs, np.zeros_like(mask), np.zeros_like(mask), GH)
+
+    assert not removed.any()
+    assert np.array_equal(out, mask)
+
+
+def test_margin_streaks_keeps_a_dot_fused_with_damage_without_a_border_guard():
+    mask, runs = ruled_page(text_left=80, width=400, height=680)
+    mask[20:140, 30] = 255
+    mask[32:35, 29:32] = 255
+    zone = np.zeros_like(mask)
+    zone[28:40, 25:36] = 255
+
+    out, removed = sc.margin_streaks(mask, runs, zone, np.zeros_like(mask), GH)
+
+    assert removed[110:140, 30].any()
+    assert np.array_equal(out[32:35, 29:32], mask[32:35, 29:32])
