@@ -212,6 +212,10 @@ def test_sample5_page2_faint_strokes_become_visible_without_darkening_blank_marg
     assert (enhanced[1196:1203, 355:369] < 160).sum() >= 15
     # The disconnected inner curve in "રહેવું" must survive too.
     assert (enhanced[1052:1057, 393:404] < 160).sum() >= 18
+    # Recovery should not amplify the tiny scattered peaks seen in this crop.
+    weak = enhanced[975:1240, 315:535]
+    _, _, components, _ = cv2.connectedComponentsWithStats((weak < 160).astype(np.uint8), 8)
+    assert np.count_nonzero(components[1:, cv2.CC_STAT_AREA] <= 3) <= 20
 
 
 @pytest.mark.parametrize("darkness", [20, 60, 100])
@@ -233,3 +237,29 @@ def test_fade_gate_ignores_dark_rims_but_develops_weak_strokes():
 
     assert np.array_equal(enhanced[35:70, 95:125], norm[35:70, 95:125])
     assert enhanced[50, 30] < 170
+
+
+def test_restoration_does_not_amplify_isolated_faint_grain_peaks():
+    norm = np.full((150, 260), 255, np.uint8)
+    cv2.rectangle(norm, (30, 50), (60, 85), 220, 2)
+    xs = [90, 115, 140, 165, 190, 215]
+    norm[60, xs] = [180, 190, 200, 210, 220, 230]
+    enhanced = core.restore_ink(norm, np.full_like(norm, 255), np.zeros_like(norm), 24)
+
+    assert np.array_equal(enhanced[60, xs], norm[60, xs])
+    assert enhanced[65, 30] < 170  # coherent ink is developed at the same time
+
+
+@pytest.mark.parametrize("scale", [1, 2])
+def test_restoration_keeps_a_weak_stroke_continuous_across_pale_sections(scale):
+    norm = np.full((150, 180), 255, np.uint8)
+    cv2.rectangle(norm, (40, 50), (70, 85), 220, 2)
+    # Periodic pale sections formerly looked like holes beside dark fragments.
+    for y in (53, 58, 63, 68, 73, 78):
+        norm[y, 40:42] = 233
+    norm = cv2.resize(norm, None, fx=scale, fy=scale, interpolation=cv2.INTER_NEAREST)
+    enhanced = core.restore_ink(norm, np.full_like(norm, 255), np.zeros_like(norm), 24 * scale)
+
+    assert np.all(enhanced[53 * scale:79 * scale, 40 * scale] < 170)
+    assert np.array_equal(enhanced[norm == 255], norm[norm == 255])
+    assert enhanced[65 * scale, 55 * scale] == 255  # hollow letter stays hollow

@@ -1436,33 +1436,48 @@ def recover_faint_text(removed, text, norm, kept, gh, ga, blocked=None):
 
 
 def restore_ink(norm, text, kill, gh, strength=1.0):
-    """Strengthen measured faint strokes inside confirmed text, before clipping.
+    """Develop coherent faint strokes without amplifying grain or dark rims.
 
-    Contrast against estimated local paper is evidence of a stroke, even when
-    it missed the binary ink mask. Only weakly inked neighbourhoods receive
-    gain, without dilating letters or drawing across white gaps. Flat paper, text-exterior pixels, and explicit deletions are
-    excluded. Paper texture inside text can still look like a faint stroke,
-    so this is opt-in.
+    Filter weak source ink before measuring the enhancement, and pool its gain
+    spatially so adjacent parts of a stroke do not alternate between pale and
+    black. Dark cores and their antialiased rims keep their exact source values.
+    The filter guides enhancement only: white gaps, exterior pixels, explicit
+    deletions, and any source pixel it would lighten remain unchanged.
     """
     if not np.isfinite(strength) or not 0 <= strength <= 1:
         raise ValueError("restore_ink strength must be between 0 and 1")
     if strength == 0:
         return norm
     gray, signal = _stroke_signal(norm, gh)
-    # Ignore shallow grain; feather the signal gate rather than binarising
-    # it, so antialiased stroke edges stay antialiased.
     ridge = np.clip((signal - 2.0) / 6.0, 0, 1)
-    evidence = ridge * np.clip((249.0 - gray) / 10.0, 0, 1)
     excluded = cv2.dilate(kill, np.ones((3, 3), np.uint8)) > 0
-    evidence *= (text > 0) & ~excluded
+    allowed = (text > 0) & ~excluded
+    # A lone grain peak is not enough stroke evidence. Neighbouring source
+    # ink must support the enhancement, at the scale of a printed stroke.
+    coverage = cv2.GaussianBlur(((signal >= 6.0) & (gray < 248.0)).astype(np.float32),
+                                (0, 0), max(0.7, 0.08 * gh))
+    support = np.clip((coverage - 0.05) / 0.15, 0, 1)
+    evidence = ridge * np.clip((249.0 - gray) / 10.0, 0, 1) * allowed * support
     size = max(3, int(0.3 * gh) | 1)
     darkest = cv2.erode(gray, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (size, size)))
-    # A dark core already survives the tone curve. Leave it AND its rim
-    # alone: pixel brightness alone would mistake an antialiased bindi edge
-    # for faded ink and enlarge it. Only locally weak strokes receive gain.
     weakness = np.clip((darkest - 100.0) / 80.0, 0, 1)
-    gain = 1.0 + 2.5 * strength * evidence * weakness
-    return np.clip(255.0 - (255.0 - gray) * gain, 0, 255).astype(np.uint8)
+    coherent = cv2.GaussianBlur(weakness, (0, 0), max(0.5, 0.06 * gh))
+    coherent[darkest <= 100.0] = 0  # includes the rim of a dark bindi or matra
+
+    # Edge-aware filtering averages weak texture along strokes without the
+    # cross-edge blur of an ordinary Gaussian applied to the page image.
+    filtered = cv2.bilateralFilter(gray, max(3, int(0.2 * gh) | 1), 25.0,
+                                   max(0.7, 0.055 * gh))
+    base = gray + (filtered - gray) * evidence * coherent
+    _, clean_signal = _stroke_signal(np.clip(base, 0, 255).astype(np.uint8), gh)
+    evidence = (np.clip((clean_signal - 3.0) / 7.0, 0, 1)
+                * np.clip((249.0 - base) / 10.0, 0, 1) * allowed * support)
+    developed = np.clip(255.0 - (255.0 - base) * (1.0 + 2.5 * evidence * coherent),
+                        0, 255)
+    # Mixing with the measured source keeps strength monotonic, avoids
+    # whitening real ink, and never synthesises ink in a white opening.
+    target = np.minimum(gray, developed)
+    return np.clip(gray + strength * (target - gray), 0, 255).astype(np.uint8)
 
 
 def compose(norm, kill, box, black=40, white=224, soften=1.0, ink=None):
