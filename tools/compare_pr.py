@@ -48,6 +48,8 @@ def main():
     parser.add_argument("--white", type=float, default=224)
     parser.add_argument("--restore-ink", type=float, default=0.0,
                         help="ink restoration strength for current code only (0-1)")
+    parser.add_argument("--base-restore-ink", type=float, default=0.0,
+                        help="ink restoration strength for the reference code (0-1)")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     base = load_revision(args.base_ref)
@@ -63,6 +65,10 @@ def main():
                 opt = module.Options(white=args.white)
                 if tag == "current":
                     opt.restore_ink = args.restore_ink
+                elif args.base_restore_ink:
+                    if not hasattr(opt, "restore_ink"):
+                        raise ValueError("reference revision does not support ink restoration")
+                    opt.restore_ink = args.base_restore_ink
                 output, stats, _, out_dpi = module.clean_page(image, dpi, opt)
                 analysis = module.analyse(image, dpi, opt)
                 marks, _ = audit_glyphs.erased(image, dpi, opt, analysis=analysis)
@@ -85,7 +91,8 @@ def main():
         "working_tree_modified": bool(subprocess.check_output(
         ["git", "diff", "HEAD", "--", "src/scanclean/core.py"], cwd=ROOT)),
         "opencv": cv2.__version__, "white": args.white,
-        "restore_ink": args.restore_ink, "pages": rows}
+        "restore_ink": args.restore_ink, "base_restore_ink": args.base_restore_ink,
+        "pages": rows}
     (args.out / "metrics.json").write_text(json.dumps(metadata, indent=2) + "\n")
     html = '''<!doctype html><meta charset="utf-8"><title>ScanClean comparison</title>
 <style>body{font:16px system-ui;background:#ddd;margin:16px}header{position:sticky;top:0;background:#ddd;padding:12px;z-index:1}main{display:flex;gap:12px;align-items:flex-start}section{flex:1;min-width:0}img{width:100%;display:block}h2{font-size:18px}select{font:inherit}</style>

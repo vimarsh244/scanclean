@@ -70,6 +70,28 @@ def test_strength_zero_disables_restoration_and_strength_is_monotonic():
     assert full[50, 30] < medium[50, 30] < norm[50, 30]
 
 
+def test_faint_glyph_rescue_groups_fragments_with_a_surviving_stroke():
+    norm = np.full((120, 220), 255, np.uint8)
+    cv2.rectangle(norm, (30, 40), (50, 65), 220, 2)
+    removed = np.zeros_like(norm)
+    kept = np.zeros_like(norm)
+    # The upper half failed the darkness test; only the bottom stroke survived.
+    removed[39:53, 29:52] = ((norm[39:53, 29:52] < 236) * 255).astype(np.uint8)
+    kept[64:67, 29:52] = ((norm[64:67, 29:52] < 236) * 255).astype(np.uint8)
+    text = np.full_like(norm, 255)
+    # An equally faint isolated speck in the same text box must stay deleted.
+    norm[45:49, 80:84] = 220
+    removed[45:49, 80:84] = 255
+
+    recovered = core.rescue_faint_glyphs(removed, text, norm, kept, 24, 135)
+
+    assert np.array_equal(recovered[39:53, 29:52], removed[39:53, 29:52])
+    assert not recovered[45:49, 80:84].any()
+    assert not recovered[removed == 0].any()
+    assert not core.rescue_faint_glyphs(removed, np.zeros_like(text), norm, kept, 24, 135).any()
+    assert not core.rescue_faint_glyphs(removed, text, norm, np.zeros_like(kept), 24, 135).any()
+
+
 def test_clean_page_applies_restoration_before_tonal_clipping(monkeypatch):
     norm, text, kill = faint_page()
     mask = ((norm < 224) * 255).astype(np.uint8)
@@ -127,3 +149,7 @@ def test_sample5_page2_faint_strokes_become_visible_without_darkening_blank_marg
     assert (after < 160).sum() > 1.25 * (before < 160).sum()
     assert ((before >= 245) & (after < 224)).sum() > 500
     assert np.array_equal(enhanced[:90], previous[:90])
+    # The top and middle of "દૂ" in "દૂર કર્યું હતું" used to be removed as
+    # specks even with restoration enabled. Check those strokes specifically.
+    assert (enhanced[1186:1194, 355:370] < 160).sum() >= 20
+    assert (enhanced[1196:1203, 355:369] < 160).sum() >= 15

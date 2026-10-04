@@ -1327,6 +1327,27 @@ def despeckle(mask, norm, core, zone, gh, ga,
     return out, removed, spared
 
 
+def rescue_faint_glyphs(removed, text, norm, kept, gh, ga):
+    """Recover specks that are source-connected fragments of a faint glyph.
+
+    The line core can miss a whole weak letter. Its fragments then fail the
+    individual darkness test even though the letter's halo joins them to a
+    surviving stroke. Only glyph-sized, non-solid groups inside detected text
+    with surviving ink support qualify; isolated dust has no such anchor.
+    """
+    soft = ((norm < 236) & (text > 0)).astype(np.uint8)
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(soft, 8)
+    height, width, area = stats[:, 3], stats[:, 2], stats[:, 4]
+    glyph = ((height >= 0.55 * gh) & (height <= 1.8 * gh)
+             & (width >= 0.25 * gh) & (width <= 1.8 * gh)
+             & (area >= 0.35 * ga) & (area <= 0.75 * width * height))
+    support = np.bincount(labels[kept > 0], minlength=n)
+    missing = np.bincount(labels[removed > 0], minlength=n)
+    glyph &= (support >= max(3, 0.15 * ga)) & (missing > 0)
+    glyph[0] = False
+    return np.where(glyph[labels] & (removed > 0), 255, 0).astype(np.uint8)
+
+
 def restore_ink(norm, text, kill, gh, strength=1.0):
     """Strengthen measured faint strokes inside confirmed text, before clipping.
 
@@ -1541,6 +1562,11 @@ def analyse(bgr, dpi, opt):
             rescue_marks(specks, dmask, norm, chroma, kept, gh),
             rescue_marks(cv2.bitwise_or(band, edge), dmask, norm, chroma, kept, gh,
                          near=True, size=1.6, reach=1.2))
+        if getattr(opt, "restore_ink", 0.0) > 0:
+            faint = rescue_faint_glyphs(
+                specks, dmask, norm, cv2.bitwise_or(kept, rescued), gh, ga)
+            rescued = cv2.bitwise_or(rescued, faint)
+            stats["faint_glyph_px"] = int((faint > 0).sum())
         back = cv2.bitwise_not(rescued)
         specks, band, edge = (cv2.bitwise_and(m, back) for m in (specks, band, edge))
         mask = cv2.bitwise_or(mask, rescued)

@@ -69,6 +69,11 @@ texture inside text. With `--no-detect`, the existing text protection zone
 provides the enhancement region. The Python equivalent is
 `Options(restore_ink=1)`.
 
+Restoration also rechecks specks that form a faint glyph together: fragments
+joined by source ink to a surviving stroke inside detected text can be
+recovered even when each fragment failed the individual darkness test.
+Isolated specks and other deletion stages remain excluded.
+
 The PDF input path requires the Poppler commands `pdfimages`, `pdfinfo`, and
 `pdftoppm` on `PATH`. Poppler is not needed when calling `clean_page()` with an
 already-decoded image.

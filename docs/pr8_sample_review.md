@@ -118,3 +118,38 @@ region of Sample 5 page 2, white letter openings and gaps, flat/noisy paper,
 unchanged exterior pixels, explicit deletions, strength controls, CLI parsing,
 and retaining source values in audits. Default outputs and baseline records
 are unchanged by this opt-in feature.
+
+## Follow-up: the missing દૂ in દૂર કર્યું હતું
+
+On Sample 5 page 2, the upper and middle strokes of દૂ were incorrectly removed
+as specks. The source's 236-level halo joins those fragments to the surviving
+lower stroke, but that lower stroke was not part of the confirmed line core.
+The ordinary halo protection therefore failed, and the original per-fragment
+rescue rejected the deleted strokes because they were not dark enough.
+
+With ink restoration enabled, `rescue_faint_glyphs` now groups the source ink
+inside detected text. A group must have glyph-sized dimensions, a non-solid
+shape, sufficient surviving ink support, and deleted speck pixels. Only those
+speck pixels are put back; the enhancement then develops their measured ink.
+No isolated group without surviving ink is restored, and the other removal
+stages are unchanged. The feature remains opt-in through `--restore-ink`.
+
+Compared the previous restoration (`be729c2`, strength 1) with the new one
+(strength 1) across all 17 supplied pages:
+
+```bash
+python tools/compare_pr.py --base-ref be729c2 --base-restore-ink 1 \
+  --restore-ink 1 --out work/ink-restoration/review
+```
+
+The refreshed Sample 5 output retains both the upper hook and middle stroke
+of દૂ. At native scan coordinates, the upper-stroke region
+`[355, 1186, 370, 1194]` goes from 0 to 43 pixels below grayscale 160, and the
+middle region `[355, 1196, 369, 1203]` goes from 1 to 34. The regression test
+now checks these two specific parts, rather than relying only on the whole
+weak-word region's dark pixel count.
+
+Validation: 51 tests passed, six absent-fixture tests skipped; wheel and source
+builds passed. A synthetic test verifies that connected letter fragments are
+recovered while an equally faint isolated speck remains deleted. Default
+outputs and their baselines remain unchanged.
