@@ -153,3 +153,51 @@ Validation: 51 tests passed, six absent-fixture tests skipped; wheel and source
 builds passed. A synthetic test verifies that connected letter fragments are
 recovered while an equally faint isolated speck remains deleted. Default
 outputs and their baselines remain unchanged.
+
+## Follow-up: general recovery of disconnected faint text
+
+The remaining curve in રહેવું on Sample 5 page 2 exposed a limitation of the
+single-glyph rescue above: faint strokes can be disconnected, and a whole
+letter may have no surviving anchor. That pass has now been replaced by
+`recover_faint_text`, enabled by the same `--restore-ink` option.
+
+The replacement measures stroke contrast against local paper at three levels.
+It groups nearby fragments using the page's estimated font scale, then checks
+letter/word shape and support from surviving ink within the group or beside
+it on the same line. This can recover wholly faint letters as well as split
+curves. Grouping closes gaps only for analysis: the output support contains
+measured source pixels, never the artificial connecting pixels. Explicit
+border, stamp, dust, thick-mark, edge, blot, crease, and band deletions remain
+excluded. The restoration gain also adapts to local ink darkness, giving weak
+print more enhancement than already dark print. There are no character,
+language, word, or sample-coordinate rules in the implementation.
+
+Reprocessed all 17 supplied pages against `c2a599b`, with strength 1 in both
+versions:
+
+```bash
+python tools/compare_pr.py --base-ref c2a599b --base-restore-ink 1 \
+  --restore-ink 1 --out work/ink-restoration/review
+```
+
+The disconnected inner curve of રહેવું, in native scan region
+`[393, 1052, 404, 1057]`, goes from 0 to 28 pixels below grayscale 160. The
+previously recovered દૂ upper/middle regions remain visible (43 to 51 and
+34 to 38 pixels respectively). These counts measure the reported strokes,
+not character recognition or complete recovery of every word. The comparison
+images show stronger continuity in other faint words on the page too.
+
+All three output PDFs retain their page counts (5, 6, 6); Sample 7's blank
+page is pixel-identical to the reference. The deletion audit proxy remains
+unchanged across all 17 pages; it does not measure within-letter legibility.
+Visual review includes every supplied page and enlarged crops of the two
+reported words. Some paper texture inside detected text is strengthened too,
+so restoration remains adjustable and off by default.
+
+Validation: 56 tests passed, six tests skipped because Samples 1–4 are absent;
+wheel and source distribution builds passed. New synthetic checks cover split
+curves at three font scales, a wholly faint letter beside stronger text,
+remote marks, explicit deletion masks, white gaps, and shallow paper grain.
+The actual Sample 5 page 2 test now checks the રહેવું curve alongside દૂ.
+Default-output regression checks for Samples 5–7 pass without baseline changes.
+Original PDFs and generated comparisons remain ignored and uncommitted.

@@ -83,13 +83,68 @@ def test_faint_glyph_rescue_groups_fragments_with_a_surviving_stroke():
     norm[45:49, 80:84] = 220
     removed[45:49, 80:84] = 255
 
-    recovered = core.rescue_faint_glyphs(removed, text, norm, kept, 24, 135)
+    recovered, support = core.recover_faint_text(removed, text, norm, kept, 24, 135)
 
     assert np.array_equal(recovered[39:53, 29:52], removed[39:53, 29:52])
     assert not recovered[45:49, 80:84].any()
     assert not recovered[removed == 0].any()
-    assert not core.rescue_faint_glyphs(removed, np.zeros_like(text), norm, kept, 24, 135).any()
-    assert not core.rescue_faint_glyphs(removed, text, norm, np.zeros_like(kept), 24, 135).any()
+    assert not support[norm == 255].any()
+    assert not core.recover_faint_text(removed, np.zeros_like(text), norm, kept, 24, 135)[0].any()
+    assert not core.recover_faint_text(removed, text, norm, np.zeros_like(kept), 24, 135)[0].any()
+
+
+@pytest.mark.parametrize("scale", [0.5, 1, 2])
+def test_context_recovery_groups_broken_curves_without_painting_the_gaps(scale):
+    norm = np.full((120, 180), 255, np.uint8)
+    cv2.rectangle(norm, (40, 40), (60, 68), 225, 2)
+    # White breaks split the upper and lower curve into separate components.
+    norm[52:55, 35:65] = 255
+    kept = np.zeros_like(norm)
+    kept[67:70, 39:62] = ((norm[67:70, 39:62] < 248) * 255).astype(np.uint8)
+    removed = ((norm < 248) & (kept == 0)).astype(np.uint8) * 255
+    text = np.full_like(norm, 255)
+    norm, kept, removed, text = [cv2.resize(a, None, fx=scale, fy=scale,
+                                           interpolation=cv2.INTER_NEAREST)
+                                  for a in (norm, kept, removed, text)]
+
+    recovered, support = core.recover_faint_text(
+        removed, text, norm, kept, 24 * scale, 135 * scale * scale)
+
+    assert (recovered > 0).sum() > 0.8 * (removed > 0).sum()
+    assert not support[norm == 255].any()
+
+
+def test_context_recovery_can_restore_a_wholly_faint_letter_on_the_same_line():
+    norm = np.full((120, 240), 255, np.uint8)
+    kept = np.zeros_like(norm)
+    cv2.rectangle(norm, (30, 40), (50, 68), 30, 2)
+    kept[norm < 100] = 255
+    cv2.rectangle(norm, (75, 40), (95, 68), 225, 2)
+    # A similar mark away from the line must not inherit its neighbour's support.
+    cv2.rectangle(norm, (170, 85), (190, 113), 225, 2)
+    removed = ((norm == 225) * 255).astype(np.uint8)
+    text = np.full_like(norm, 255)
+
+    recovered, support = core.recover_faint_text(removed, text, norm, kept, 24, 135)
+
+    assert recovered[39:70, 74:97].any()
+    assert not recovered[84:115, 169:192].any()
+    assert not support[norm == 255].any()
+    blocked = removed.copy()
+    recovered, support = core.recover_faint_text(removed, text, norm, kept, 24, 135, blocked)
+    assert not recovered.any()
+    assert not support[blocked > 0].any()
+
+
+def test_context_recovery_ignores_grain_inside_text():
+    rng = np.random.default_rng(4)
+    norm = rng.integers(240, 243, size=(120, 220), dtype=np.uint8)
+    text = np.full_like(norm, 255)
+
+    recovered, support = core.recover_faint_text(text, text, norm, text, 24, 135)
+
+    assert not recovered.any()
+    assert not support.any()
 
 
 def test_clean_page_applies_restoration_before_tonal_clipping(monkeypatch):
@@ -153,3 +208,5 @@ def test_sample5_page2_faint_strokes_become_visible_without_darkening_blank_marg
     # specks even with restoration enabled. Check those strokes specifically.
     assert (enhanced[1186:1194, 355:370] < 160).sum() >= 20
     assert (enhanced[1196:1203, 355:369] < 160).sum() >= 15
+    # The disconnected inner curve in "રહેવું" must survive too.
+    assert (enhanced[1052:1057, 393:404] < 160).sum() >= 18

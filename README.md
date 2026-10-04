@@ -61,18 +61,21 @@ scanclean input.pdf -o cleaned --restore-ink 0.5
 ```
 
 `--restore-ink` strengthens faint strokes within detected text lines before
-the white-point mapping can discard them. It uses local contrast in the source
-scan, preserving white letter openings and gaps rather than dilating the font.
+the white-point mapping can discard them. It estimates local paper contrast in the source
+scan and gives weak print more gain than already dark print, preserving white
+letter openings and gaps.
 The flag alone uses strength 1; values from 0 to 1 adjust the effect. It is off
 by default because it deliberately darkens print and may also strengthen
 texture inside text. With `--no-detect`, the existing text protection zone
 provides the enhancement region. The Python equivalent is
 `Options(restore_ink=1)`.
 
-Restoration also rechecks specks that form a faint glyph together: fragments
-joined by source ink to a surviving stroke inside detected text can be
-recovered even when each fragment failed the individual darkness test.
-Isolated specks and other deletion stages remain excluded.
+Restoration examines several source contrast levels and groups nearby stroke
+fragments at the page’s font scale. A plausible letter or word can be recovered
+when it contains surviving ink or sits beside it on the same text line, even
+if its own faint strokes were all classified as specks. Grouping only locates
+measured source ink; it does not paint connecting pixels across white gaps.
+Other explicit deletion stages remain excluded.
 
 The PDF input path requires the Poppler commands `pdfimages`, `pdfinfo`, and
 `pdftoppm` on `PATH`. Poppler is not needed when calling `clean_page()` with an
