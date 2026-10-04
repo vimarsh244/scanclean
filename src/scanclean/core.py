@@ -1440,7 +1440,8 @@ def restore_ink(norm, text, kill, gh, strength=1.0):
 
     Filter weak source ink before measuring the enhancement, and pool its gain
     spatially so adjacent parts of a stroke do not alternate between pale and
-    black. Dark cores and their antialiased rims keep their exact source values.
+    black. Dark cores and their antialiased rims keep their exact source values;
+    bounded, grey pinholes inside those cores can be repaired separately.
     The filter guides enhancement only: white gaps, exterior pixels, explicit
     deletions, and any source pixel it would lighten remain unchanged.
     """
@@ -1477,6 +1478,19 @@ def restore_ink(norm, text, kill, gh, strength=1.0):
     # Mixing with the measured source keeps strength monotonic, avoids
     # whitening real ink, and never synthesises ink in a white opening.
     target = np.minimum(gray, developed)
+    # A pale source pixel surrounded by strong ink is a dropout, not a weak
+    # stroke ridge. The ridge-based gain above intentionally ignores it.
+    # Close only single-pixel holes with dense ink support, and paint only
+    # measured grey pixels. White counters, spaces and exterior rims are
+    # untouched; this is not dilation of the printed glyphs.
+    strong = (norm < 160).astype(np.uint8)
+    closed = cv2.morphologyEx(strong, cv2.MORPH_CLOSE,
+                              cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3)))
+    density = cv2.boxFilter(strong.astype(np.float32), -1, (3, 3))
+    pinholes = ((closed > 0) & (strong == 0) & (norm < 236)
+                & (density >= 0.55) & allowed)
+    neighbour = np.maximum(cv2.medianBlur(norm, 3), 100)
+    target[pinholes] = np.minimum(target[pinholes], neighbour[pinholes])
     return np.clip(gray + strength * (target - gray), 0, 255).astype(np.uint8)
 
 

@@ -250,6 +250,28 @@ def test_restoration_does_not_amplify_isolated_faint_grain_peaks():
     assert enhanced[65, 30] < 170  # coherent ink is developed at the same time
 
 
+def test_restoration_repairs_grey_pinholes_without_filling_white_counters():
+    norm = np.full((120, 180), 255, np.uint8)
+    cv2.rectangle(norm, (40, 40), (70, 80), 60, 5)
+    norm[55, 40] = 225  # pale dropout inside a strong stroke
+    norm[65, 40] = 255  # genuinely white opening must remain white
+    norm[50, 44] = 225  # grey outside rim without surrounding ink
+    text = np.full_like(norm, 255)
+    kill = np.zeros_like(norm)
+    enhanced = core.restore_ink(norm, text, kill, 24)
+    half = core.restore_ink(norm, text, kill, 24, 0.5)
+
+    assert enhanced[55, 40] == 100
+    assert enhanced[55, 40] < half[55, 40] < norm[55, 40]
+    assert enhanced[50, 44] == norm[50, 44]
+    assert np.array_equal(enhanced[norm == 255], norm[norm == 255])
+    assert np.array_equal(enhanced[norm < 160], norm[norm < 160])
+    kill[55, 40] = 255
+    assert core.restore_ink(norm, text, kill, 24)[55, 40] == 225
+    text[:] = 0
+    assert np.array_equal(core.restore_ink(norm, text, kill, 24), norm)
+
+
 @pytest.mark.parametrize("scale", [1, 2])
 def test_restoration_keeps_a_weak_stroke_continuous_across_pale_sections(scale):
     norm = np.full((150, 180), 255, np.uint8)
