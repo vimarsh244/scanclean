@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from scanclean.core import clear_bands, edge_bands, frame_rules, line_cover, scratches
+from scanclean import core as sc
 
 
 GH = 20.0
@@ -123,3 +124,78 @@ def test_frame_rules_refuses_edge_damage_of_the_same_height(flaw):
         mask[row, start:start + width] = 255
 
     assert not frame_rules(mask, GH).any()
+
+
+def test_detected_page_number_survives_the_final_crop(monkeypatch):
+    image = np.full((760, 400, 3), 255, np.uint8)
+    for top in range(150, 651, 50):
+        for left in range(80, 321, 30):
+            cv2.rectangle(image, (left, top), (left + 12, top + 17), (0, 0, 0), -1)
+    cv2.putText(image, "3", (195, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2)
+    detected = np.zeros(image.shape[:2], np.uint8)
+    detected[35:80, 185:225] = 255
+    detected[140:690, 70:345] = 255
+    monkeypatch.setattr(sc, "text_block", lambda *args: (60, 120, 350, 710))
+    monkeypatch.setattr(sc, "detect_text", lambda *args: (
+        detected, [(185, 35, 40, 45), (70, 140, 275, 550)]))
+
+    output, stats, _, _ = sc.clean_page(image, 300, sc.Options(deskew=False))
+
+    assert stats["box"][1] < 70
+    assert (output[35:80, 185:225] < 160).sum() > 50
+    assert not (output[:30] < 160).any()
+
+
+def test_despeckle_keeps_a_faint_fragment_attached_by_its_halo():
+    mask = np.zeros((100, 180), np.uint8)
+    core = np.zeros_like(mask)
+    norm = np.full_like(mask, 255)
+    core[40:58, 60:74] = 255
+    mask[:] = core
+    norm[core > 0] = 40
+    # Beyond the direct dilation reach, but connected through faint ink.
+    mask[44:49, 82:87] = 255
+    norm[44:49, 74:87] = 225
+    norm[44:49, 82:87] = 170
+    # An equally faint isolated speck must still be removed.
+    mask[44:49, 140:145] = 255
+    norm[44:49, 140:145] = 170
+
+    output, removed, _ = sc.despeckle(mask, norm, core, np.zeros_like(mask), GH, GA)
+
+    assert output[44:49, 82:87].all()
+    assert not removed[44:49, 82:87].any()
+    assert removed[44:49, 140:145].all()
+
+
+def test_erasure_audit_counts_a_page_number_lost_only_to_cropping(monkeypatch):
+    from audit_glyphs import erased
+
+    mask = np.zeros((200, 200), np.uint8)
+    mask[20:38, 90:104] = 255
+    analysis = dict(gh=GH, ga=GA, mask=mask, box=(20, 60, 180, 180),
+                    stages={"specks": np.zeros_like(mask)})
+    monkeypatch.setattr(sc, "detect_text", lambda *args: (mask, [(90, 20, 14, 18)]))
+
+    marks, _ = erased(np.full((200, 200, 3), 255, np.uint8), 300,
+                      sc.Options(), analysis=analysis)
+
+    assert marks == [("crop", 90, 20, 14, 18)]
+
+
+def test_paper_floor_preserves_connected_faint_strokes_but_whitens_isolated_texture():
+    norm = np.full((100, 180), 255, np.uint8)
+    ink = np.zeros_like(norm)
+    ink[40:58, 60:74] = 255
+    norm[ink > 0] = 40
+    norm[44:49, 74:90] = 170           # faint stroke missing from the ink mask
+    norm[44:49, 140:145] = 170        # equally faint, isolated paper texture
+    kill = np.zeros_like(norm)
+    kill[40:58, 85:100] = 255
+
+    output = sc.compose(norm, np.zeros_like(norm), (0, 0, 180, 100), ink=ink)
+    removed = sc.compose(norm, kill, (0, 0, 180, 100), ink=ink)
+
+    assert output[46, 80] < 200
+    assert output[46, 142] == 255
+    assert removed[46, 88] > 250       # halo support must not undo a deletion

@@ -81,6 +81,15 @@ shapes that used to be cleaned away — type running out to the trim, a column o
 a table, the side of a printed border — out of rectangles, so those cases are
 tested without a source scan.
 
+To compare the local samples against another Git revision without changing
+branches, run `python tools/compare_pr.py --base-ref main`. This writes lossless
+page images, both sets of cleaned PDFs, an HTML comparison with adjustable
+display width, and diagnostic metrics to ignored `work/pr8-review/`. The
+audit includes surviving ink lost to cropping and aligns its detector with
+deskewed pages. Its counts are suspected glyph deletions, not OCR accuracy;
+inspect faint text at full resolution too. See the
+[review of the supplied samples](docs/pr8_sample_review.md) for results and limits.
+
 ## Browser / Pyodide
 
 Tagged releases include `scanclean-pyodide-vX.Y.Z.zip`, an ABI-locked browser

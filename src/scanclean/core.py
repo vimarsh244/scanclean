@@ -1333,9 +1333,11 @@ def compose(norm, kill, box, black=40, white=224, soften=1.0, ink=None):
     dirt; those are forced white.
 
     `ink` is the surviving ink mask. Anything more than two pixels from it is
-    paper by construction - the mask is a deliberately over-inclusive union of
-    a local and a global threshold, so it already holds every stroke down to
-    the faintest - and is painted white. Without this, grey mottling lighter
+    paper and is painted white. Before growing that support, include faint ink
+    connected to surviving strokes at the same halo level as despeckle: a weak
+    impression can fall below both thresholds without being paper. Without
+    this support, spared words can still be eaten hollow during rendering.
+    Without the paper floor, grey mottling lighter
     than any ink (a crumbling sheet edge, foxing, show-through) passes the tone
     curve as a visible grey haze, because it was never "dirt" to remove: it was
     never ink to begin with.
@@ -1349,6 +1351,8 @@ def compose(norm, kill, box, black=40, white=224, soften=1.0, ink=None):
         alpha = cv2.GaussianBlur(k.astype(np.float32) / 255.0, (0, 0), soften)
         g = g + (255.0 - g) * np.clip(alpha, 0, 1)
     if ink is not None:
+        halo = ((norm < 236) & attached_halo(norm, ink, 236)).astype(np.uint8) * 255
+        ink = cv2.bitwise_or(ink, halo)
         # two pixels of reach keeps each stroke's antialiased rim intact
         keep = cv2.dilate(ink, np.ones((5, 5), np.uint8)).astype(np.float32) / 255.0
         keep = cv2.GaussianBlur(keep, (0, 0), 0.8)
@@ -1514,6 +1518,10 @@ def analyse(bgr, dpi, opt):
         specks, band, edge = (cv2.bitwise_and(m, back) for m in (specks, band, edge))
         mask = cv2.bitwise_or(mask, rescued)
         mask, gate = detector_gate(mask, dmask, dboxes, keep, gh)
+        # A lone page number can survive every removal stage without being a
+        # long enough run to widen the provisional crop. Include surviving ink
+        # vouched for by the detector before composition whites the margins.
+        box = guard_box(box, cv2.bitwise_and(mask, dmask), gh)
         stats.update(det_boxes=len(dboxes),
                      rescued=int(cv2.connectedComponentsWithStats(rescued, 8)[0] - 1),
                      gate_px=int((gate > 0).sum()))

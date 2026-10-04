@@ -34,19 +34,30 @@ from scanclean import Options
 from scanclean.cli import page_images
 
 
-def erased(bgr, dpi, opt):
+def erased(bgr, dpi, opt, *, analysis=None):
     """[(stage, x, y, w, h)] for every deleted mark the detector calls type."""
-    analysis = sc.analyse(bgr, dpi, opt)
+    if analysis is None:
+        analysis = sc.analyse(bgr, dpi, opt)
     if analysis["gh"] is None:
         return [], analysis
-    detected = sc.detect_text(bgr)
+    # analyse() deskews internally; the witness must use that same coordinate
+    # system or its boxes can miss the deleted glyphs on a tilted scan.
+    aligned = sc.straighten(bgr, dpi / 300.0)[0] if getattr(opt, "deskew", True) else bgr
+    detected = sc.detect_text(aligned)
     if detected is None:
         return [], analysis
     boxed = detected[0]
     gh, ga = analysis["gh"], analysis["ga"]
 
+    # Composition also deletes surviving ink outside its crop. Those pixels
+    # never enter `kill`, so an audit of removal stages alone misses page
+    # numbers that survive cleaning and disappear only in the final output.
+    crop = analysis["mask"].copy()
+    x0, y0, x1, y1 = analysis["box"]
+    crop[y0:y1, x0:x1] = 0
+    stages = dict(analysis["stages"], crop=crop)
     found = []
-    for stage, removed in analysis["stages"].items():
+    for stage, removed in stages.items():
         if stage == "rescued" or not removed.any():
             continue
         count, labels, stats, centres = cv2.connectedComponentsWithStats(removed, 8)
@@ -75,7 +86,11 @@ def main():
             total.update(by_stage)
             if marks:
                 rows.append((len(marks), pdf, index + 1, dict(by_stage)))
-                norm, kill = analysis["norm"], analysis["kill"]
+                norm, kill = analysis["norm"], analysis["kill"].copy()
+                x0, y0, x1, y1 = analysis["box"]
+                outside = analysis["mask"].copy()
+                outside[y0:y1, x0:x1] = 0
+                kill = cv2.bitwise_or(kill, outside)
                 for stage, x, y, w, h in marks[:6]:
                     pad = int(1.2 * analysis["gh"])
                     y0, y1 = max(0, y - pad), min(norm.shape[0], y + h + pad)

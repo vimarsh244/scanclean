@@ -6,7 +6,7 @@
       "file": "Sample 1.pdf",
       "page": 6,
       "input_sha256": "06121db57b46e125f594c9d644394400cbf83f3d86f0ab8602f2a369458d85f2",
-      "output_sha256": "d8b43e8970316eeb7ec2c79b52945049f72a7660461a805e761639dfd66401e3",
+      "output_sha256": null,
       "dpi": 600.0,
       "shape": [
         2014,
@@ -54,7 +54,7 @@
       "file": "Sample 2.pdf",
       "page": 7,
       "input_sha256": "6584417c1642b713406a35f49fc16a146692c550492ae90164eae39415fdb340",
-      "output_sha256": "d02c4d993610d5f2506c7c2336acba638690c891764a98f66f767542442d0456",
+      "output_sha256": null,
       "dpi": 600.0,
       "shape": [
         2014,
@@ -102,7 +102,7 @@
       "file": "Sample 3.pdf",
       "page": 1,
       "input_sha256": "6d1811db92cc3388dded487cca96330a25b1cebd7889c00f3ebd183a8ba98332",
-      "output_sha256": "87e96a843191e20eb61f585d3404603ec3c881766a69ec59b71003c4c91dfbf8",
+      "output_sha256": null,
       "dpi": 600.0,
       "shape": [
         1684,
@@ -150,7 +150,7 @@
       "file": "Sample 4.pdf",
       "page": 3,
       "input_sha256": "e55c8aecde0f3ac04957dde7a7c278e807598598092d9b5e7decd26725b03cbd",
-      "output_sha256": "6398f241cc4166bc6ff48bef1a9084c5ca573a6653f5b0676197eeaa38f48eb5",
+      "output_sha256": null,
       "dpi": 600.0,
       "shape": [
         2077,
@@ -198,31 +198,31 @@
       "file": "Sample 5.pdf",
       "page": 4,
       "input_sha256": "cf0588534d95adc49421efb4343a68701b56c30e8a16ddbef1f646911d59e41e",
-      "output_sha256": "f783c467c6a08703c477c171718a6f616ce91ab78aac4bee4cb8bbd9671db038",
+      "output_sha256": "86632419514dd747c9392cb1055c08d0ab6af6748cff08d23dee7689b4f6c0e8",
       "dpi": 600.0,
       "shape": [
         1700,
         1010
       ],
-      "mean": 236.148138,
-      "std": 63.007094,
-      "dark_pixels": 134385,
-      "ink_pixels": 157130,
+      "mean": 236.11608,
+      "std": 63.052669,
+      "dark_pixels": 134587,
+      "ink_pixels": 157409,
       "grid_dark_fraction": [
         0.05078431,
         0.0685701,
-        0.06768441,
+        0.06955182,
         0.04744943,
         0.08704949,
         0.10925831,
         0.10522876,
-        0.08624041,
+        0.08624971,
         0.07662932,
         0.09548477,
         0.09721755,
         0.0857847,
         0.056676,
-        0.07836317,
+        0.07837247,
         0.07579832,
         0.06402232
       ],
@@ -233,7 +233,7 @@
           900,
           700
         ],
-        "dark_pixels": 37524,
+        "dark_pixels": 37525,
         "components": 732
       },
       "stats": {
@@ -246,16 +246,16 @@
       "file": "Sample 6.pdf",
       "page": 1,
       "input_sha256": "47295eac342c79f3ae12a84a0aeaad7b70cc800cccf784dfba174f86f59f8490",
-      "output_sha256": "c252ff62b82a5ee11c48048afc22d882c490943b031137b32eab2b0d91e331da",
+      "output_sha256": "39d8cdc1b5598a500696ccba8dca29279e6585bb67650d01d73f63116eb055ed",
       "dpi": 600.0,
       "shape": [
         2510,
         1540
       ],
-      "mean": 232.517494,
-      "std": 70.161195,
-      "dark_pixels": 352981,
-      "ink_pixels": 382365,
+      "mean": 232.511845,
+      "std": 70.160876,
+      "dark_pixels": 352980,
+      "ink_pixels": 382415,
       "grid_dark_fraction": [
         0.06306676,
         0.06976118,
@@ -263,16 +263,16 @@
         0.07534125,
         0.09548763,
         0.11759451,
-        0.12482008,
+        0.12481595,
         0.10527339,
         0.09608733,
         0.14542555,
         0.12986184,
-        0.10630709,
+        0.10631538,
         0.06303664,
         0.07042766,
         0.07256597,
-        0.05657623
+        0.05656795
       ],
       "text_crop": {
         "box": [
@@ -294,23 +294,23 @@
       "file": "Sample 7.pdf",
       "page": 5,
       "input_sha256": "9f22fb143d40d122c97ae4750e3d0a6f6cec750fae56398d09021c77b088bd86",
-      "output_sha256": "3fe5bb17bec2550a7508e063ea018a43669a6dc0b9ef8f794302aec9e3873434",
+      "output_sha256": "34a0dc514e7c0077e0d1283be3252f897f937b20615fa7ed4644d675c5a40cf2",
       "dpi": 320.0,
       "shape": [
         2427,
         1573
       ],
-      "mean": 236.925248,
-      "std": 63.367415,
-      "dark_pixels": 281395,
-      "ink_pixels": 306305,
+      "mean": 236.923871,
+      "std": 63.368331,
+      "dark_pixels": 281400,
+      "ink_pixels": 306346,
       "grid_dark_fraction": [
         0.0075706,
-        0.04224087,
+        0.04224926,
         0.02826695,
-        0.00696504,
-        0.09563993,
-        0.15358141,
+        0.00696922,
+        0.09564412,
+        0.15358561,
         0.13956345,
         0.0472031,
         0.09480153,
@@ -329,7 +329,7 @@
           1300,
           900
         ],
-        "dark_pixels": 64174,
+        "dark_pixels": 64178,
         "components": 285
       },
       "stats": {
@@ -338,5 +338,11 @@
         "core_removed": 55
       }
     }
+  ],
+  "pending_output_hashes": [
+    "Sample 1.pdf",
+    "Sample 2.pdf",
+    "Sample 3.pdf",
+    "Sample 4.pdf"
   ]
 }
